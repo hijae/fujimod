@@ -46,7 +46,14 @@ address = 0x68c73000
 physical = 0x8c73000
 size = 5754880
 
-# SD slots: no card inserted, the run input of each slot of 25-sd.toml (as on the X-T5 board).
+# The X-E5 setup links at 0xff800000. The X100VI reference ROM adjusts its
+# stack at 0xfff02eb8, storing at 0xff83f3f0 from SP 0xff83f400.
+# The full 256 KiB extent is UNVERIFIED on the X-E5.
+[[ram]]
+base = 0xff800000
+size = 0x40000
+
+# SD slots start with no SD card inserted. See 25-sd.toml for their wiring.
 [[sd]]
 base = 0xff9b0000
 present = false
