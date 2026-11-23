@@ -10,7 +10,7 @@ impl Session {
     pub fn nand_medium(&self, name: &str) -> Result<Nand, String> {
         self.board
             .inspect_capability::<dyn NandStore, _>(self.node(name)?, |controller| {
-                Ok(controller.medium().clone())
+                Ok(controller.medium())
             })
     }
     pub fn retain_nand(&mut self, name: &str, medium: Nand) -> Result<(), String> {

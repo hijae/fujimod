@@ -753,8 +753,8 @@ impl Device for NandController {
 mod tests;
 
 impl fujimod_emulator_devices::capability::NandStore for NandController {
-    fn medium(&self) -> &fujimod_emulator_devices::parts::nand::Nand {
-        NandController::medium(self)
+    fn medium(&self) -> fujimod_emulator_devices::parts::nand::Nand {
+        NandController::medium(self).clone()
     }
     fn retain(
         &mut self,

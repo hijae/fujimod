@@ -159,7 +159,7 @@ impl Capability for dyn UsbPort {
 
 /// A NAND controller's medium.
 pub trait NandStore {
-    fn medium(&self) -> &Nand;
+    fn medium(&self) -> Nand;
     fn retain(&mut self, medium: Nand) -> Result<(), String>;
 }
 impl Capability for dyn NandStore {

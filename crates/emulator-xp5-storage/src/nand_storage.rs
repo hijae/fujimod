@@ -16,6 +16,14 @@ pub type NandShared = Arc<Mutex<NandStorage>>;
 #[derive(Default, Serialize, Deserialize)]
 pub struct NandSession {
     pub reads: StorageReads,
+    #[serde(default)]
+    pub writes: StorageReads,
+    #[serde(default)]
+    pub operations: u64,
+    #[serde(default)]
+    pub erases: u64,
+    #[serde(default)]
+    pub programs: u64,
     pub write_enable: bool,
     /// The page the program-load data builds up before a program execute: main area then spare,
     /// 0xff where nothing was loaded. Not part of a checkpoint.
@@ -26,6 +34,8 @@ pub struct NandSession {
 pub struct NandStorage {
     die: Nand,
     pub session: NandSession,
+    /// Main-area pages changed (seed, program, erase) since the last `take_dirty_pages`.
+    dirty: std::collections::BTreeSet<u64>,
 }
 
 impl NandStorage {
@@ -47,7 +57,35 @@ impl NandStorage {
         Ok(Self {
             die,
             session: NandSession::default(),
+            dirty: Default::default(),
         })
+    }
+
+    pub fn die(&self) -> &Nand {
+        &self.die
+    }
+
+    pub fn retain(&mut self, medium: Nand) -> Result<(), String> {
+        if !self.die.same_base(&medium) {
+            return Err("NAND durable input identity differs".into());
+        }
+        self.die = medium;
+        self.dirty.clear();
+        Ok(())
+    }
+
+    /// Indices (4 KiB) of the pages changed since the previous call.
+    pub fn take_dirty_pages(&mut self) -> Vec<u64> {
+        std::mem::take(&mut self.dirty).into_iter().collect()
+    }
+
+    pub fn validate_session(session: &NandSession) -> Result<(), String> {
+        session.reads.validate(SIZE)?;
+        session.writes.validate(SIZE)?;
+        if session.operations < session.erases.saturating_add(session.programs) {
+            return Err("Invalid serial-NAND operation counts in checkpoint".into());
+        }
+        Ok(())
     }
 
     /// Declared initial main-area bytes, placed over the base image before the guest has
@@ -60,6 +98,11 @@ impl NandStorage {
             }],
             std::collections::BTreeMap::new(),
         )?;
+        if !bytes.is_empty() {
+            let first = offset / PAGE as u64;
+            let last = (offset + bytes.len() as u64 - 1) / PAGE as u64;
+            self.dirty.extend(first..=last);
+        }
         Ok(())
     }
 
@@ -82,6 +125,12 @@ impl NandStorage {
         }
         self.die.program(row, bytes, spare)?;
         self.session.write_enable = false;
+        self.session.operations += 1;
+        self.session.programs += 1;
+        self.session
+            .writes
+            .record(u64::from(row) * PAGE as u64, PAGE as u64, SIZE)?;
+        self.dirty.insert(u64::from(row));
         Ok(())
     }
 
@@ -118,6 +167,16 @@ impl NandStorage {
         }
         self.die.erase(first_row)?;
         self.session.write_enable = false;
+        self.session.operations += 1;
+        self.session.erases += 1;
+        self.session.writes.record(
+            u64::from(first_row) * PAGE as u64,
+            u64::from(PAGES_PER_BLOCK) * PAGE as u64,
+            SIZE,
+        )?;
+        for row in first_row..first_row + PAGES_PER_BLOCK {
+            self.dirty.insert(u64::from(row));
+        }
         Ok(())
     }
 }
@@ -194,6 +253,34 @@ mod tests {
         s.session.write_enable = true;
         s.erase_block(0).unwrap();
         assert_eq!(s.read(0, 4).unwrap(), [0xff; 4]);
+        assert_eq!(s.session.operations, 2);
+        assert_eq!(s.session.programs, 1);
+        assert_eq!(s.session.erases, 1);
+        assert_eq!(s.session.writes.ranges, [(0, u64::from(PAGES_PER_BLOCK) * PAGE as u64)]);
         assert!(NandStorage::new(vec![0; (SIZE + 1) as usize]).is_err());
+    }
+
+    #[test]
+    fn operation_counts_advance_across_repeated_writes_and_dirty_pages_reset_on_take() {
+        let mut s = NandStorage::new(vec![0xff; PAGE * 64]).unwrap();
+        s.seed_bytes(PAGE as u64, &[0xaa]).unwrap();
+        assert_eq!(s.take_dirty_pages(), vec![1]);
+        assert!(s.take_dirty_pages().is_empty());
+
+        s.session.write_enable = true;
+        s.erase_block(0).unwrap();
+        assert_eq!(s.session.operations, 1);
+        assert_eq!(s.session.erases, 1);
+        assert_eq!(s.session.programs, 0);
+        assert_eq!(s.take_dirty_pages().len(), PAGES_PER_BLOCK as usize);
+
+        s.session.write_enable = true;
+        s.program_page(2, &[0x55; PAGE], &[0xff; SPARE]).unwrap();
+        s.session.write_enable = true;
+        s.program_page(2, &[0x44; PAGE], &[0xff; SPARE]).unwrap();
+        assert_eq!(s.session.operations, 3);
+        assert_eq!(s.session.programs, 2);
+        assert_eq!(s.session.writes.ranges, [(0, u64::from(PAGES_PER_BLOCK) * PAGE as u64)]);
+        assert_eq!(s.take_dirty_pages(), vec![2]);
     }
 }

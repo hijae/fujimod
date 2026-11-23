@@ -248,9 +248,36 @@ impl Medium {
 }
 
 pub struct Aperture(pub Medium);
+impl fujimod_emulator_devices::capability::NandStore for Aperture {
+    fn medium(&self) -> fujimod_emulator_devices::parts::nand::Nand {
+        match &self.0 {
+            Medium::Nand(s) => s.lock().unwrap().die().clone(),
+            Medium::Nor(_) => unreachable!("NOR aperture does not expose NandStore"),
+        }
+    }
+    fn retain(
+        &mut self,
+        medium: fujimod_emulator_devices::parts::nand::Nand,
+    ) -> Result<(), String> {
+        match &self.0 {
+            Medium::Nand(s) => s.lock().unwrap().retain(medium),
+            Medium::Nor(_) => Err("NOR aperture has no NAND medium".into()),
+        }
+    }
+}
 impl Device for Aperture {
     fn name(&self) -> &'static str {
         "firmware-flash-storage"
+    }
+    fn nand_store(
+        &self,
+    ) -> Option<&(dyn fujimod_emulator_devices::capability::NandStore + 'static)> {
+        matches!(self.0, Medium::Nand(_)).then_some(self)
+    }
+    fn nand_store_mut(
+        &mut self,
+    ) -> Option<&mut (dyn fujimod_emulator_devices::capability::NandStore + 'static)> {
+        matches!(self.0, Medium::Nand(_)).then_some(self)
     }
     fn read(&mut self, cx: &mut Cx<'_>, address: u64, n: u8) -> u64 {
         let o = address.wrapping_sub(BASE);
@@ -274,10 +301,14 @@ impl Device for Aperture {
                 "medium": "nor",
                 "session": serde_json::to_value(&s.lock().unwrap().session).unwrap(),
             }),
-            Medium::Nand(s) => serde_json::json!({
-                "medium": "nand",
-                "session": serde_json::to_value(&s.lock().unwrap().session).unwrap(),
-            }),
+            Medium::Nand(s) => {
+                let s = s.lock().unwrap();
+                serde_json::json!({
+                    "medium": "nand",
+                    "geometry": s.die().options(),
+                    "session": serde_json::to_value(&s.session).unwrap(),
+                })
+            }
         }
     }
     fn restore(&mut self, v: &Value) -> Result<(), String> {
@@ -300,7 +331,7 @@ impl Device for Aperture {
                 let session: crate::nand_storage::NandSession =
                     serde_json::from_value(session.clone())
                         .map_err(|e| format!("invalid flash storage checkpoint: {e}"))?;
-                session.reads.validate(SIZE)?;
+                crate::nand_storage::NandStorage::validate_session(&session)?;
                 s.lock().unwrap().session = session;
                 Ok(())
             }
@@ -315,19 +346,38 @@ impl Device for Aperture {
             }
             Medium::Nand(s) => {
                 let s = s.lock().unwrap();
-                Checkpoint::encode(self.name(), &StoredRef::Nand(&s.session))
+                Ok(Checkpoint::encode(self.name(), &StoredRef::Nand(&s.session))?
+                    .with_children(vec![s.die().checkpoint()?]))
             }
         }
     }
     fn validate_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), String> {
-        self.validate_stored(&checkpoint.decode::<Stored>(self.name())?)
-    }
-    fn restore_checkpoint(&mut self, checkpoint: &Checkpoint) -> Result<(), String> {
         let stored: Stored = checkpoint.decode(self.name())?;
         self.validate_stored(&stored)?;
+        if let Medium::Nand(s) = &self.0 {
+            let [child] = checkpoint.children() else {
+                return Err("serial-NAND checkpoint requires its die state".into());
+            };
+            let die = fujimod_emulator_devices::parts::nand::Nand::from_checkpoint(child)?;
+            if !s.lock().unwrap().die().same_base(&die) {
+                return Err("serial-NAND checkpoint base image differs".into());
+            }
+        }
+        Ok(())
+    }
+    fn restore_checkpoint(&mut self, checkpoint: &Checkpoint) -> Result<(), String> {
+        self.validate_checkpoint(checkpoint)?;
+        let stored: Stored = checkpoint.decode(self.name())?;
         match (&self.0, stored) {
             (Medium::Nor(s), Stored::Nor(session)) => s.lock().unwrap().session = session,
-            (Medium::Nand(s), Stored::Nand(session)) => s.lock().unwrap().session = session,
+            (Medium::Nand(s), Stored::Nand(session)) => {
+                let die = fujimod_emulator_devices::parts::nand::Nand::from_checkpoint(
+                    &checkpoint.children()[0],
+                )?;
+                let mut s = s.lock().unwrap();
+                s.retain(die)?;
+                s.session = session;
+            }
             _ => unreachable!("validated flash storage checkpoint medium changed"),
         }
         Ok(())
@@ -340,9 +390,14 @@ impl Device for Aperture {
                 serde_json::json!({"medium": "nor", "session": session})
             }
             Medium::Nand(s) => {
-                let session = serde_json::to_value(&s.lock().unwrap().session)
-                    .map_err(|e| e.to_string())?;
-                serde_json::json!({"medium": "nand", "session": session})
+                let s = s.lock().unwrap();
+                let session = serde_json::to_value(&s.session).map_err(|e| e.to_string())?;
+                serde_json::json!({
+                    "medium": "nand",
+                    "geometry": s.die().options(),
+                    "die": s.die().state(),
+                    "session": session,
+                })
             }
         })
     }
@@ -351,7 +406,9 @@ impl Aperture {
     fn validate_stored(&self, stored: &Stored) -> Result<(), String> {
         match (&self.0, stored) {
             (Medium::Nor(_), Stored::Nor(session)) => session.validate(),
-            (Medium::Nand(_), Stored::Nand(session)) => session.reads.validate(SIZE),
+            (Medium::Nand(_), Stored::Nand(session)) => {
+                crate::nand_storage::NandStorage::validate_session(session)
+            }
             _ => Err("flash storage checkpoint medium differs from the device".into()),
         }
     }
@@ -474,5 +531,40 @@ mod tests {
         storage.lock().unwrap().session.write_enable = true;
         aperture.restore_checkpoint(&checkpoint).unwrap();
         assert_eq!(aperture.save(), saved);
+        assert!(aperture.nand_store().is_none());
+    }
+    #[test]
+    fn nand_aperture_exposes_nand_store_geometry_and_checkpoints_die_bytes() {
+        let storage = Arc::new(Mutex::new(
+            crate::nand_storage::NandStorage::new(vec![0xa5; PAGE * 64]).unwrap(),
+        ));
+        let mut aperture = Aperture(Medium::Nand(storage.clone()));
+        assert!(aperture.nand_store().is_some());
+        let saved_state = aperture.save();
+        assert_eq!(saved_state["medium"], "nand");
+        assert_eq!(saved_state["geometry"]["page_bytes"], PAGE);
+        assert_eq!(saved_state["geometry"]["pages_per_block"], 64);
+
+        let before = aperture.checkpoint().unwrap();
+        let before_fp = aperture.fingerprint().unwrap();
+        {
+            let mut s = storage.lock().unwrap();
+            s.session.write_enable = true;
+            s.erase_block(0).unwrap();
+            s.session.write_enable = true;
+            s.program_page(0, &[0x11; PAGE], &[0xff; crate::nand_storage::SPARE])
+                .unwrap();
+        }
+        assert_ne!(aperture.fingerprint().unwrap(), before_fp);
+        let mut out = [0u8; 4];
+        aperture.nand_store().unwrap().medium().read(0, &mut out).unwrap();
+        assert_eq!(out, [0x11; 4]);
+        assert_eq!(aperture.save()["session"]["operations"], 2);
+
+        aperture.restore_checkpoint(&before).unwrap();
+        assert_eq!(aperture.fingerprint().unwrap(), before_fp);
+        aperture.nand_store().unwrap().medium().read(0, &mut out).unwrap();
+        assert_eq!(out, [0xa5; 4]);
+        assert_eq!(aperture.save()["session"]["operations"], 0);
     }
 }

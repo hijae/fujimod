@@ -496,6 +496,16 @@ impl Device for NandController {
             cx.fail(e);
         }
     }
+    fn nand_store(
+        &self,
+    ) -> Option<&(dyn fujimod_emulator_devices::capability::NandStore + 'static)> {
+        Some(self)
+    }
+    fn nand_store_mut(
+        &mut self,
+    ) -> Option<&mut (dyn fujimod_emulator_devices::capability::NandStore + 'static)> {
+        Some(self)
+    }
     fujimod_emulator_devices::checkpoint_state!(state: State, Self::validate_state);
     fn save(&self) -> Value {
         serde_json::to_value(&self.state).unwrap()
@@ -504,6 +514,15 @@ impl Device for NandController {
         self.state = serde_json::from_value(v.clone())
             .map_err(|e| format!("invalid serial-NAND controller checkpoint: {e}"))?;
         Ok(())
+    }
+}
+
+impl fujimod_emulator_devices::capability::NandStore for NandController {
+    fn medium(&self) -> fujimod_emulator_devices::parts::nand::Nand {
+        self.nand.lock().unwrap().die().clone()
+    }
+    fn retain(&mut self, medium: fujimod_emulator_devices::parts::nand::Nand) -> Result<(), String> {
+        self.nand.lock().unwrap().retain(medium)
     }
 }
 
@@ -816,6 +835,27 @@ mod tests {
         let nand = c.nand.lock().unwrap();
         assert_eq!(nand.read(70 * PAGE as u64 + 6, 8).unwrap(), [0xff, 0xff, 1, 2, 3, 4, 0xff, 0xff]);
         assert!(!nand.session.write_enable);
+        assert_eq!(nand.session.operations, 1);
+        assert_eq!(nand.session.programs, 1);
+    }
+
+    #[test]
+    fn nand_controller_exports_live_medium_through_nand_store() {
+        let mut c = controller(vec![0xff; PAGE * 64]);
+        let mut host = RecordingHost::default();
+        c.state.regs[0] = 1;
+        c.state.regs[0x40 / 4] = 0x06;
+        strobe(&mut c, &mut host);
+        c.state.regs[0x40 / 4] = 0x02;
+        strobe(&mut c, &mut host);
+        c.nand.lock().unwrap().load_program_data(0, &[0xaa, 0xbb]).unwrap();
+        c.write(&mut Cx::new(&mut host, 0, 0, 0), 0xff90a050, 4, 1);
+        c.state.regs[0x40 / 4] = 0x10;
+        strobe(&mut c, &mut host);
+        let medium = Device::nand_store(&c).unwrap().medium();
+        let mut out = [0u8; 4];
+        medium.read(PAGE as u64, &mut out).unwrap();
+        assert_eq!(out, [0xaa, 0xbb, 0xff, 0xff]);
     }
 
 }
