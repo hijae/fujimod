@@ -42,6 +42,15 @@
       343
     ]
   },
+  "boot": {
+    "firmware_update": {
+      "hold": [
+        {
+          "id": "disp_back_button"
+        }
+      ]
+    }
+  },
   "analog_levels": null,
   "controls": {
     "fn1_button": {
