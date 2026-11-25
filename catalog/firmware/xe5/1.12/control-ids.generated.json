@@ -2488,7 +2488,8 @@
       "event": 12322,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 47,
@@ -2505,9 +2506,10 @@
     {
       "id": "row-48",
       "event": 12321,
-      "debug_key": "S-A",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 48,
@@ -2524,9 +2526,10 @@
     {
       "id": "row-49",
       "event": 12324,
-      "debug_key": "S-1/4000",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 49,
@@ -2543,9 +2546,10 @@
     {
       "id": "row-50",
       "event": 12325,
-      "debug_key": "S-1/2000",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 50,
@@ -2562,9 +2566,10 @@
     {
       "id": "row-51",
       "event": 12326,
-      "debug_key": "S-1/1000",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 51,
@@ -2581,9 +2586,10 @@
     {
       "id": "row-52",
       "event": 12327,
-      "debug_key": "S-1/500",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 52,
@@ -2600,9 +2606,10 @@
     {
       "id": "row-53",
       "event": 12328,
-      "debug_key": "S-1/250",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 53,
@@ -2638,9 +2645,10 @@
     {
       "id": "row-55",
       "event": 12330,
-      "debug_key": "S-1/125",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 55,
@@ -2657,9 +2665,10 @@
     {
       "id": "row-56",
       "event": 12331,
-      "debug_key": "S-1/60",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 56,
@@ -2676,9 +2685,10 @@
     {
       "id": "row-57",
       "event": 12332,
-      "debug_key": "S-1/30",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 57,
@@ -2695,9 +2705,10 @@
     {
       "id": "row-58",
       "event": 12333,
-      "debug_key": "S-1/15",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 58,
@@ -2714,9 +2725,10 @@
     {
       "id": "row-59",
       "event": 12334,
-      "debug_key": "S-1/8",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 59,
@@ -2733,9 +2745,10 @@
     {
       "id": "row-60",
       "event": 12335,
-      "debug_key": "S-1/4",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 60,
@@ -2752,9 +2765,10 @@
     {
       "id": "row-61",
       "event": 12336,
-      "debug_key": "S-1/2",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 61,
@@ -2771,9 +2785,10 @@
     {
       "id": "row-62",
       "event": 12337,
-      "debug_key": "S-1/1",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 62,
@@ -2790,9 +2805,10 @@
     {
       "id": "row-63",
       "event": 12338,
-      "debug_key": "S-T",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 63,
@@ -2809,9 +2825,10 @@
     {
       "id": "row-64",
       "event": 12339,
-      "debug_key": "S-B",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "shutter_speed_dial"
       },
       "scanner": {
         "index": 64,

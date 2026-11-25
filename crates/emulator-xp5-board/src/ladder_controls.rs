@@ -674,15 +674,17 @@ mod tests {
             })
             .collect();
         assert_eq!(channels, [1, 2, 8, 11, 14]);
-        let [focus] = options.dials.as_slice() else {
-            panic!("Expected the X-E5 focus selector");
-        };
-        assert_eq!(focus.name, "focus_mode_selector");
+        let focus = options.dials.iter().find(|dial| dial.name == "focus_mode_selector").unwrap();
         assert_eq!(focus.channel, 9);
         let bands: Vec<_> = focus.positions.iter()
             .map(|band| (band.label.as_str(), band.band_low, band.band_high, band.sample))
             .collect();
         assert_eq!(bands, [("S", 2618, 3066, 2842), ("C", 3751, 4095, 3923), ("M", 3067, 3750, 3408)]);
+        let shutter = options.dials.iter().find(|dial| dial.name == "shutter_speed_dial").unwrap();
+        assert_eq!(shutter.channel, 13);
+        assert_eq!(shutter.positions.len(), 17);
+        let program = &shutter.positions[0];
+        assert_eq!((program.label.as_str(), program.band_low, program.band_high), ("P", 3965, 4095));
     }
 
     #[test]

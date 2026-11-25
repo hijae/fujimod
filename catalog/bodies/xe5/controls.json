@@ -698,55 +698,140 @@
           "kind": "positions",
           "positions": [
             {
-              "id": "B"
+              "id": "B",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-64"
+              },
+              "asserted": true
             },
             {
-              "id": "T"
+              "id": "T",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-63"
+              },
+              "asserted": true
             },
             {
-              "id": "P"
+              "id": "P",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-47"
+              },
+              "asserted": true
             },
             {
-              "id": "A"
+              "id": "A",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-48"
+              },
+              "asserted": true
             },
             {
-              "id": "4000"
+              "id": "4000",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-49"
+              },
+              "asserted": true
             },
             {
-              "id": "2000"
+              "id": "2000",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-50"
+              },
+              "asserted": true
             },
             {
-              "id": "1000"
+              "id": "1000",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-51"
+              },
+              "asserted": true
             },
             {
-              "id": "500"
+              "id": "500",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-52"
+              },
+              "asserted": true
             },
             {
-              "id": "250"
+              "id": "250",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-53"
+              },
+              "asserted": true
             },
             {
-              "id": "125"
+              "id": "125",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-55"
+              },
+              "asserted": true
             },
             {
-              "id": "60"
+              "id": "60",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-56"
+              },
+              "asserted": true
             },
             {
-              "id": "30"
+              "id": "30",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-57"
+              },
+              "asserted": true
             },
             {
-              "id": "15"
+              "id": "15",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-58"
+              },
+              "asserted": true
             },
             {
-              "id": "8"
+              "id": "8",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-59"
+              },
+              "asserted": true
             },
             {
-              "id": "4"
+              "id": "4",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-60"
+              },
+              "asserted": true
             },
             {
-              "id": "2"
+              "id": "2",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-61"
+              },
+              "asserted": true
             },
             {
-              "id": "1"
+              "id": "1",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-62"
+              },
+              "asserted": true
             }
           ]
         }
@@ -911,6 +996,98 @@
         }
       ],
       "basis": "X-E5 1.12 scanner callback 0x01523bd0 reads ADC channel 9 at 0x0225c92a. Factory configuration halfword bounds at 0x38e9..0x38f3 correspond to scanner rows 88–90 (MF_AF_C, MF_AF_M, MF_AF_A)."
+    },
+    {
+      "control_id": "shutter_speed_dial",
+      "channel": 13,
+      "positions": [
+        {
+          "id": "P",
+          "band_low": 3965,
+          "band_high": 4095
+        },
+        {
+          "id": "A",
+          "band_low": 3705,
+          "band_high": 3964
+        },
+        {
+          "id": "4000",
+          "band_low": 3454,
+          "band_high": 3704
+        },
+        {
+          "id": "2000",
+          "band_low": 3210,
+          "band_high": 3453
+        },
+        {
+          "id": "1000",
+          "band_low": 2973,
+          "band_high": 3209
+        },
+        {
+          "id": "500",
+          "band_low": 2741,
+          "band_high": 2972
+        },
+        {
+          "id": "250",
+          "band_low": 2514,
+          "band_high": 2740
+        },
+        {
+          "id": "125",
+          "band_low": 2070,
+          "band_high": 2289
+        },
+        {
+          "id": "60",
+          "band_low": 1852,
+          "band_high": 2069
+        },
+        {
+          "id": "30",
+          "band_low": 1636,
+          "band_high": 1851
+        },
+        {
+          "id": "15",
+          "band_low": 1421,
+          "band_high": 1635
+        },
+        {
+          "id": "8",
+          "band_low": 1206,
+          "band_high": 1420
+        },
+        {
+          "id": "4",
+          "band_low": 991,
+          "band_high": 1205
+        },
+        {
+          "id": "2",
+          "band_low": 775,
+          "band_high": 990
+        },
+        {
+          "id": "1",
+          "band_low": 557,
+          "band_high": 774
+        },
+        {
+          "id": "T",
+          "band_low": 337,
+          "band_high": 556
+        },
+        {
+          "id": "B",
+          "band_low": 100,
+          "band_high": 336
+        }
+      ],
+      "basis": "X-E5 1.12 callback 0x01524148 reads 0x0225c932 (ADC channel 13) and factory bounds 0x3748..0x378e. Scanner rows 47–64 dispatch codes 59–76. Firmware event decoder 0x012232ac and shutter table 0x01a2bcb8 distinguish P, A and timed positions. The firmware also decodes 1/180, which is not marked on the dial."
     }
   ]
 }
