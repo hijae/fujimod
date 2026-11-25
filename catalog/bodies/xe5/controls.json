@@ -110,8 +110,37 @@
       "default_function": "Pull toward the grip: SURROUND VIEW; pull and hold toward the grip: ASPECT RATIO; pull toward the lens: DIGITAL TELE-CONV.; pull and hold toward the lens: FS RECIPE.",
       "mechanical": false,
       "behavior": {
-        "kind": "lever"
-      }
+        "kind": "lever",
+        "momentary": true,
+        "positions": [
+          {
+            "id": "grip",
+            "key": {
+              "kind": "debug_key",
+              "name": "EVF_OVF"
+            },
+            "asserted": true
+          },
+          {
+            "id": "lens",
+            "key": {
+              "kind": "debug_key",
+              "name": "ND"
+            },
+            "asserted": true
+          }
+        ]
+      },
+      "positions": [
+        {
+          "id": "grip",
+          "label": "Toward grip"
+        },
+        {
+          "id": "lens",
+          "label": "Toward lens"
+        }
+      ]
     },
     "diopter_adjustment_control": {
       "name": "Diopter adjustment control",

@@ -258,6 +258,20 @@ direction. Both pads idle low.",
 }
 
 fn xe5_extension(options: &mut ladders::Options) -> Result<(), String> {
+    let lever = options.ladders.iter_mut()
+        .find(|ladder| ladder.wire == (ladders::Wire::Adc { channel: 11 }))
+        .ok_or("the X-E5 catalog ladders lack ADC 11")?;
+    let rung = |key, band_low, band_high| ladders::Rung {
+        key,
+        band_low,
+        band_high,
+        sample: midpoint(band_low, band_high),
+        basis: "X-E5 1.12 callback 0x01523ff4 reads ADC 11. Scanner rows 67 and 68 use factory halfwords 0x3899/0x389b and 0x3895/0x3897. UI consumer 0x02e5288c applies the grip and lens function-lock settings to the two translated events.".into(),
+    };
+    lever.rungs.extend([
+        rung(Key::LeverGrip, 2326, 3066),
+        rung(Key::LeverLens, 1880, 2325),
+    ]);
     options.rear_dial = Some(ladders::CommandDial::Counting(ladders::CountingDial {
         register: 0x36,
         basis: "X-E5 1.12 at 0x01525a60 reads power-controller register 0x36 and converts the signed nibble to physical keys 0x6a/0x6b using configuration 0x3809 bit 3.".into(),
@@ -523,6 +537,8 @@ fn extension_ids(body: &str) -> (&'static [(Key, &'static str, &'static str)], &
             &[
                 (Key::RearPush, "rear_command_dial.push", "Rear command dial press"),
                 (Key::FrontPush, "front_command_dial.push", "Front command dial press"),
+                (Key::LeverGrip, "control_lever.grip", "Control lever toward grip"),
+                (Key::LeverLens, "control_lever.lens", "Control lever toward lens"),
             ],
             &[],
         ),
@@ -715,6 +731,14 @@ mod tests {
             })
             .collect();
         assert_eq!(channels, [1, 2, 8, 11, 14]);
+        let lever: Vec<_> = options.ladders.iter()
+            .find(|ladder| ladder.wire == (ladders::Wire::Adc { channel: 11 })).unwrap()
+            .rungs.iter().map(|rung| (rung.key, rung.band_low, rung.band_high)).collect();
+        assert_eq!(lever, [
+            (Key::Fn2, 3067, 3750),
+            (Key::LeverGrip, 2326, 3066),
+            (Key::LeverLens, 1880, 2325),
+        ]);
         assert!(matches!(options.rear_dial, Some(ladders::CommandDial::Counting(dial)) if dial.register == 0x36));
         let front = options.front_dial.as_ref().unwrap();
         assert_eq!(front.pins, [Pin { port: 0, pin: 9 }, Pin { port: 0, pin: 10 }]);

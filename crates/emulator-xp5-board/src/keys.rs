@@ -44,6 +44,9 @@ pub enum Key {
     /// Rear and front command-dial pushes.
     RearPush,
     FrontPush,
+    /// The control lever pushed toward the grip or the lens.
+    LeverGrip,
+    LeverLens,
 }
 impl Key {
     pub fn parse(s: &str) -> Result<Self, String> {
@@ -79,6 +82,8 @@ impl Key {
             "STICK_DR" | "STICK_DOWN_RIGHT" => Ok(Self::StickDownRight),
             "REAR_PUSH" | "CMD_PUSH" => Ok(Self::RearPush),
             "FRONT_PUSH" | "CMD2_PUSH" => Ok(Self::FrontPush),
+            "LEVER_GRIP" => Ok(Self::LeverGrip),
+            "LEVER_LENS" => Ok(Self::LeverLens),
             _ => Err(format!("unknown physical key {s:?}")),
         }
     }
