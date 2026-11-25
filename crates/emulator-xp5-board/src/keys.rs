@@ -47,6 +47,8 @@ pub enum Key {
     /// The control lever pushed toward the grip or the lens.
     LeverGrip,
     LeverLens,
+    /// The Bluetooth button on the bottom of the camera.
+    Bluetooth,
 }
 impl Key {
     pub fn parse(s: &str) -> Result<Self, String> {
@@ -84,6 +86,7 @@ impl Key {
             "FRONT_PUSH" | "CMD2_PUSH" => Ok(Self::FrontPush),
             "LEVER_GRIP" => Ok(Self::LeverGrip),
             "LEVER_LENS" => Ok(Self::LeverLens),
+            "BLUETOOTH" => Ok(Self::Bluetooth),
             _ => Err(format!("unknown physical key {s:?}")),
         }
     }

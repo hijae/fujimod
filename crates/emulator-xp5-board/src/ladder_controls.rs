@@ -25,7 +25,7 @@ use crate::{keys::Key, ladders};
 
 /// Catalog control identities, including pad directions, and the emulator key
 /// that presses each. A ladder rung on any other identity is refused.
-const CONTROL_KEYS: [(&str, Key); 24] = [
+const CONTROL_KEYS: [(&str, Key); 25] = [
     ("menu_ok_button", Key::Menu),
     ("disp_back_bluetooth_button", Key::Back),
     ("disp_back_button", Key::Back),
@@ -50,6 +50,7 @@ const CONTROL_KEYS: [(&str, Key); 24] = [
     ("ael_button", Key::AeLock),
     ("ael_afl_button", Key::AeLock),
     ("af_on_button", Key::AfOn),
+    ("bluetooth_button", Key::Bluetooth),
 ];
 
 /// The emulator key that presses a catalog control identity, if one exists.
@@ -731,6 +732,10 @@ mod tests {
             })
             .collect();
         assert_eq!(channels, [1, 2, 8, 11, 14]);
+        let bluetooth = options.ladders.iter()
+            .find(|ladder| ladder.wire == (ladders::Wire::Adc { channel: 8 })).unwrap()
+            .rungs.iter().find(|rung| rung.key == Key::Bluetooth).unwrap();
+        assert_eq!((bluetooth.band_low, bluetooth.band_high, bluetooth.sample), (2102, 3066, 2584));
         let lever: Vec<_> = options.ladders.iter()
             .find(|ladder| ladder.wire == (ladders::Wire::Adc { channel: 11 })).unwrap()
             .rungs.iter().map(|rung| (rung.key, rung.band_low, rung.band_high)).collect();

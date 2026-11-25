@@ -3377,7 +3377,8 @@
       "event": 107,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "bluetooth_button"
       },
       "scanner": {
         "index": 91,
