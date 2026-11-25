@@ -42,6 +42,7 @@
       343
     ]
   },
+  "analog_levels": 4096,
   "controls": {
     "ael_afl_button": {
       "name": "AEL (exposure lock)/AFL (focus lock) button",
@@ -389,13 +390,28 @@
         "kind": "switch",
         "positions": [
           {
-            "id": "S"
+            "id": "S",
+            "key": {
+              "kind": "debug_key",
+              "name": "MF_AF_A"
+            },
+            "asserted": true
           },
           {
-            "id": "C"
+            "id": "C",
+            "key": {
+              "kind": "debug_key",
+              "name": "MF_AF_C"
+            },
+            "asserted": true
           },
           {
-            "id": "M"
+            "id": "M",
+            "key": {
+              "kind": "debug_key",
+              "name": "MF_AF_M"
+            },
+            "asserted": true
           }
         ]
       }
@@ -871,6 +887,30 @@
           "basis": "Band 3069..3708, halfwords of the factory configuration page read through the stock tag reader 0x15b5a64 (tags 0x382d low, 0x382b high); scanner rows of table 0x1e02e70 (kind 1, source 14) for 8DIR_D. The sample is the band midpoint."
         }
       ]
+    }
+  ],
+  "adc_position_dials": [
+    {
+      "control_id": "focus_mode_selector",
+      "channel": 9,
+      "positions": [
+        {
+          "id": "S",
+          "band_low": 2618,
+          "band_high": 3066
+        },
+        {
+          "id": "C",
+          "band_low": 3751,
+          "band_high": 4095
+        },
+        {
+          "id": "M",
+          "band_low": 3067,
+          "band_high": 3750
+        }
+      ],
+      "basis": "X-E5 1.12 scanner callback 0x01523bd0 reads ADC channel 9 at 0x0225c92a. Factory configuration halfword bounds at 0x38e9..0x38f3 correspond to scanner rows 88–90 (MF_AF_C, MF_AF_M, MF_AF_A)."
     }
   ]
 }

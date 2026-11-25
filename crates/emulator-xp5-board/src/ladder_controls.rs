@@ -9,7 +9,7 @@
 //! resolution differs from the model's are refused, never approximated.
 //!
 //! The catalog's physical-controls schema has no field yet for contact sets
-//! (two keys on one wire, or a key with a latched position), position-dial
+//! (two keys on one wire, or a key with a latched position), shared position-dial
 //! bands, pad diagonals, command-dial wiring, push pads or switch bits. For a
 //! body whose decode establishes them, [`extension`] adds them from the
 //! board's own table below.
@@ -71,7 +71,7 @@ pub fn ladders(
     };
     let controls = PhysicalControls::decode_document(document, body)?;
     controls.validate()?;
-    if controls.ladders.is_empty() {
+    if controls.ladders.is_empty() && controls.adc_position_dials.is_empty() {
         return Ok(None);
     }
     let inputs = match resolved.configuration.inputs.as_ref() {
@@ -92,6 +92,20 @@ pub fn ladders(
         gpio_keys: Vec::new(),
     };
     extension(body, &mut options)?;
+    options.dials.extend(controls.adc_position_dials.iter().map(|dial| ladders::PositionDial {
+        name: dial.control_id.clone(),
+        aliases: Vec::new(),
+        channel: dial.channel,
+        positions: dial.positions.iter().map(|band| ladders::Position {
+            label: band.id.clone(),
+            aliases: Vec::new(),
+            band_low: band.band_low,
+            band_high: band.band_high,
+            sample: midpoint(band.band_low, band.band_high),
+            contact: false,
+        }).collect(),
+        basis: dial.basis.clone(),
+    }));
     options.validate()?;
     Ok(Some(options))
 }
@@ -509,6 +523,10 @@ pub fn panel_names(resolved: &ResolvedConfiguration) -> Result<crate::panel::Nam
     let positions = positions
         .iter()
         .map(|&(model, id)| Ok((model.to_owned(), (id.to_owned(), label(id)?))))
+        .chain(controls.adc_position_dials.iter().map(|dial| {
+            let id = &dial.control_id;
+            Ok((id.clone(), (id.clone(), label(id)?)))
+        }))
         .collect::<Result<_, String>>()?;
     let shutter = match controls.controls.get("shutter_button") {
         Some(control) if matches!(body.as_str(), "xt5" | "x100vi") => Some((
@@ -656,6 +674,15 @@ mod tests {
             })
             .collect();
         assert_eq!(channels, [1, 2, 8, 11, 14]);
+        let [focus] = options.dials.as_slice() else {
+            panic!("Expected the X-E5 focus selector");
+        };
+        assert_eq!(focus.name, "focus_mode_selector");
+        assert_eq!(focus.channel, 9);
+        let bands: Vec<_> = focus.positions.iter()
+            .map(|band| (band.label.as_str(), band.band_low, band.band_high, band.sample))
+            .collect();
+        assert_eq!(bands, [("S", 2618, 3066, 2842), ("C", 3751, 4095, 3923), ("M", 3067, 3750, 3408)]);
     }
 
     #[test]

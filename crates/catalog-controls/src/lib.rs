@@ -4,6 +4,7 @@
 //! the checked relationship; spelling is never used to translate vocabularies.
 
 pub mod facts;
+pub mod position_dials;
 pub mod ladders;
 
 pub use crate::ladders::{ControlLadder, LadderRung, LadderWire};
@@ -76,6 +77,10 @@ pub struct PhysicalControls {
         tsify(optional)
     )]
     pub ladders: Vec<ControlLadder>,
+    /// Latched controls read as disjoint bands on dedicated ADC channels.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(all(target_arch = "wasm32", not(target_os = "emscripten")), tsify(optional))]
+    pub adc_position_dials: Vec<position_dials::AdcPositionDial>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1121,6 +1126,7 @@ impl PhysicalControls {
         {
             return Err("SD boot requires a firmware update combination".into());
         }
+        position_dials::validate(self)?;
         let mut roles = BTreeSet::new();
         for (mode, combination) in &self.boot {
             if combination.hold.is_empty() {

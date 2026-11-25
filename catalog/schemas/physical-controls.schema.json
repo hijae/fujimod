@@ -1,5 +1,35 @@
 {
   "$defs": {
+    "AdcPositionDial": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "type": "string"
+        },
+        "channel": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "control_id": {
+          "type": "string"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/PositionBand"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "control_id",
+        "channel",
+        "positions",
+        "basis"
+      ],
+      "type": "object"
+    },
     "BootCombination": {
       "additionalProperties": false,
       "properties": {
@@ -839,6 +869,32 @@
         "mechanical"
       ],
       "type": "object"
+    },
+    "PositionBand": {
+      "additionalProperties": false,
+      "properties": {
+        "band_high": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "band_low": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "band_low",
+        "band_high"
+      ],
+      "type": "object"
     }
   },
   "$id": "https://fujimod.com/schemas/physical-controls.schema.json",
@@ -850,6 +906,13 @@
       "const": "https://fujimod.com/schemas/physical-controls.schema.json",
       "description": "Stable schema identifier for this document.",
       "type": "string"
+    },
+    "adc_position_dials": {
+      "description": "Latched controls read as disjoint bands on dedicated ADC channels.",
+      "items": {
+        "$ref": "#/$defs/AdcPositionDial"
+      },
+      "type": "array"
     },
     "analog_levels": {
       "description": "Analog sample resolution used by this body's contacts.",

@@ -561,6 +561,38 @@ mod tests {
     }
 
     #[test]
+    fn xe5_focus_selector_holds_through_button_edges() {
+        let resolved = ResolvedConfiguration::bundled("xe5-112").unwrap();
+        let options = crate::ladder_controls::ladders(&resolved).unwrap().unwrap();
+        let names = crate::ladder_controls::panel_names(&resolved).unwrap();
+        let nodes = Nodes {
+            adc: "adc".into(),
+            gpio: "gpio".into(),
+            power: ("spi".into(), 2),
+            rear_dial: None,
+            front_dial: None,
+        };
+        let panel = compile(
+            &options,
+            &names,
+            &nodes,
+            &Idle { adc: &[4095; 15], register: &|_| Ok(0) },
+            1_000_000_000,
+        ).unwrap();
+        let switches = SwitchPanel::new(panel.wiring).unwrap();
+        assert_eq!(switches.positions()["focus_mode_selector"], "C");
+        for (position, value) in [("S", 2842), ("M", 3408), ("C", 3923)] {
+            let moved = switches.transition("focus_mode_selector", position).unwrap();
+            let held = moved.transition("menu_ok_button", "pressed").unwrap()
+                .transition("menu_ok_button", "released").unwrap();
+            assert_eq!(held.positions()["focus_mode_selector"], position);
+            assert!(held.signals().unwrap().contains(&Signal::Analog {
+                node: "adc".into(), channel: 9, value,
+            }));
+        }
+    }
+
+    #[test]
     fn x100vi_controls_compile_to_one_panel() {
         let resolved = ResolvedConfiguration::bundled("x100vi-131").unwrap();
         let options = crate::ladder_controls::ladders(&resolved).unwrap().unwrap();

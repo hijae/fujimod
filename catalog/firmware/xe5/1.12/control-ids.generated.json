@@ -3278,7 +3278,8 @@
       "event": 26,
       "debug_key": "MF_AF_C",
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "focus_mode_selector"
       },
       "scanner": {
         "index": 88,
@@ -3297,7 +3298,8 @@
       "event": 27,
       "debug_key": "MF_AF_M",
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "focus_mode_selector"
       },
       "scanner": {
         "index": 89,
@@ -3316,7 +3318,8 @@
       "event": 25,
       "debug_key": "MF_AF_A",
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "focus_mode_selector"
       },
       "scanner": {
         "index": 90,
