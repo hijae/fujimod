@@ -163,14 +163,15 @@ pub struct CountingDial {
 }
 
 /// A command dial read as a two-pad quadrature phase. `pins` are phase bit 1
-/// then phase bit 0. `FRONT+` steps 3, 2, 0, 1, 3 (from rest, bit 0 falls
-/// first) and `FRONT-` steps 3, 1, 0, 2, 3; each edge is one detent.
+/// then phase bit 0. From rest phase 3, positive steps follow 3, 2, 0, 1, 3
+/// and negative steps reverse that cycle. The dial defines the edges per detent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct QuadratureDial {
     pub pins: [Pin; 2],
     pub rest_phase: u8,
     pub phase_milliseconds: u16,
+    pub edges_per_detent: i32,
     pub basis: String,
 }
 
@@ -457,7 +458,7 @@ impl Options {
                     return Err("quadrature dial pads repeat".into());
                 }
             }
-            if dial.rest_phase > 3 || dial.phase_milliseconds == 0 || dial.basis.trim().is_empty() {
+            if dial.rest_phase > 3 || dial.phase_milliseconds == 0 || !(1..=64).contains(&dial.edges_per_detent) || dial.basis.trim().is_empty() {
                 return Err("quadrature dial needs a two-bit rest phase and a basis".into());
             }
         }

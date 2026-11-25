@@ -241,6 +241,7 @@ fn x100vi_extension(options: &mut ladders::Options) -> Result<(), String> {
         pins,
         rest_phase: 0,
         phase_milliseconds: 2,
+        edges_per_detent: 1,
         basis: basis.into(),
     };
     options.rear_dial = Some(ladders::CommandDial::Quadrature(dial(
@@ -265,6 +266,7 @@ fn xe5_extension(options: &mut ladders::Options) -> Result<(), String> {
         pins: [Pin { port: 0, pin: 9 }, Pin { port: 0, pin: 10 }],
         rest_phase: 3,
         phase_milliseconds: 100,
+        edges_per_detent: 4,
         basis: "X-E5 1.12 encoder descriptors 0x01e04150/0x01e04178, pins in 0x01e04120, phase sampler 0x0152835c and transition table 0x01e040f0. The run starts with both GPIO inputs high. A strict REC trial decoded both directions with each phase held for 100 ms.".into(),
     });
     options.gpio_keys = vec![
@@ -472,6 +474,7 @@ count, bit 3 sign. The firmware never writes it, so the controller clears the co
         pins: [Pin { port: 0, pin: 9 }, Pin { port: 0, pin: 10 }],
         rest_phase: 3,
         phase_milliseconds: 2,
+        edges_per_detent: 1,
         basis: "Sampler 0x140a5bc: phase = level(0.9) << 1 | level(0.10), idle 3; transition table \
 0x1c0af58 steps 3, 2, 0, 1, 3 for CMD2_R (physical 0x8e) and 3, 1, 0, 2, 3 for CMD2_L (0x8f)."
             .into(),
@@ -717,6 +720,7 @@ mod tests {
         assert_eq!(front.pins, [Pin { port: 0, pin: 9 }, Pin { port: 0, pin: 10 }]);
         assert_eq!(front.rest_phase, 3);
         assert_eq!(front.phase_milliseconds, 100);
+        assert_eq!(front.edges_per_detent, 4);
         let switches: Vec<_> = options.gpio_keys.iter().map(|key| (key.key, key.pin, key.active_high)).collect();
         assert_eq!(switches, [
             (Key::RearPush, Pin { port: 0, pin: 13 }, false),

@@ -386,7 +386,7 @@ pub fn compile(
         });
     }
     let mut interfaces = Vec::new();
-    let mut rotary = |names: &Option<(String, String)>, node: Option<&String>| -> Result<(), String> {
+    let mut rotary = |names: &Option<(String, String)>, node: Option<&String>, edges_per_step| -> Result<(), String> {
         let (Some((id, label)), Some(node)) = (names, node) else {
             return Ok(());
         };
@@ -406,17 +406,17 @@ pub fn compile(
         interfaces.push(Interface::Rotary {
             id: id.clone(),
             node: node.clone(),
-            edges_per_step: 1,
+            edges_per_step,
         });
         Ok(())
     };
     match &options.rear_dial {
-        Some(CommandDial::Counting(_)) => rotary(&names.rear_dial, Some(&nodes.power.0))?,
-        Some(CommandDial::Quadrature(_)) => rotary(&names.rear_dial, nodes.rear_dial.as_ref())?,
+        Some(CommandDial::Counting(_)) => rotary(&names.rear_dial, Some(&nodes.power.0), 1)?,
+        Some(CommandDial::Quadrature(dial)) => rotary(&names.rear_dial, nodes.rear_dial.as_ref(), dial.edges_per_detent)?,
         None => {}
     }
-    if options.front_dial.is_some() {
-        rotary(&names.front_dial, nodes.front_dial.as_ref())?;
+    if let Some(dial) = &options.front_dial {
+        rotary(&names.front_dial, nodes.front_dial.as_ref(), dial.edges_per_detent)?;
     }
     Ok(Panel {
         wiring: Spec { controls, circuits },
@@ -579,6 +579,10 @@ mod tests {
             &Idle { adc: &[4095; 15], register: &|_| Ok(0) },
             1_000_000_000,
         ).unwrap();
+        assert!(panel.confirmation.interfaces.iter().any(|interface| matches!(
+            interface,
+            Interface::Rotary { id, edges_per_step: 4, .. } if id == "front_command_dial"
+        )));
         let switches = SwitchPanel::new(panel.wiring).unwrap();
         assert_eq!(switches.positions()["focus_mode_selector"], "C");
         for (position, value) in [("S", 2842), ("M", 3408), ("C", 3923)] {
