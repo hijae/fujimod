@@ -1227,7 +1227,7 @@ fn aarch64_bus_error_region_delivers_el3_external_data_abort_and_leaves_neighbor
             )
             .unwrap();
         }
-        let mut board = graph
+        let board = graph
             .build(
                 Options::new(RunEngine::Unicorn).with_translation_cache_size_bytes(1024 * 1024),
                 bus,
@@ -1252,6 +1252,8 @@ fn aarch64_bus_error_region_delivers_el3_external_data_abort_and_leaves_neighbor
         );
         // 0x10020: str w3, [x1], #4; b .
         write_words(0x10020, &[0xb800_4423, 0x1400_0000]);
+        // 0x10030: ldr s3, [x1]; b .
+        write_words(0x10030, &[0xbd40_0023, 0x1400_0000]);
         // 0x12200 (VBAR_EL3 + 0x200): capture ESR/FAR/ELR/SPSR/X1/X3, set ELR=0x1000c, eret.
         write_words(
             0x12200,
@@ -1302,6 +1304,10 @@ fn aarch64_bus_error_region_delivers_el3_external_data_abort_and_leaves_neighbor
     assert_eq!(scalar(cpu, Register::X(22)).unwrap(), 0x10020);
     assert_eq!(scalar(cpu, Register::X(24)).unwrap(), 0xfff1_0000);
     assert_eq!(scalar(cpu, Register::X(10)).unwrap(), 2);
+
+    let mut simd = make_board(true, 0x10030, 0xfff1_0000);
+    let err = simd.run_for_instructions(16, 100).unwrap_err();
+    assert!(err.contains("unsupported external data abort transfer"), "{err}");
 
     // Reading at 0xfff10004 (outside the 4-byte region) still refuses as unowned MMIO.
     let mut neighbor = make_board(true, 0x10000, 0xfff1_0004);

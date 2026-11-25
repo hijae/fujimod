@@ -1363,11 +1363,6 @@ impl Board {
             if let Some(error) = s.error.take() {
                 return Err(error);
             }
-            if result.is_ok() {
-                s.deliver_pending_abort(&**cpu, core)?;
-            } else {
-                s.pending_abort[core] = None;
-            }
             if s.continuation.borrow().fired
                 || self.host_pause.get()
                 || self.isolated_core.get().is_some_and(|core| s.waiting[core])
@@ -1662,6 +1657,7 @@ impl Board {
             }
             s.sync(&**cpu, core)?;
             if let Some(error) = s.error.take() {
+                s.pending_abort[core] = None;
                 return Err(error);
             }
             if result.is_ok() {
@@ -3129,7 +3125,7 @@ impl State {
                 {
                     bus.finish_published_read(host, address, size)?;
                     binding.published_hits.set(binding.published_hits.get() + 1);
-                    return Ok(word);
+                    return Ok(bus::AccessOutcome::Value(word));
                 }
             }
             bus.access(host, core, pc, address, size, value)
@@ -3147,6 +3143,26 @@ impl State {
                 let mut x = [0u64; 31];
                 for (index, slot) in x.iter_mut().enumerate() {
                     *slot = scalar(cpu, Register::X(index as u8))?;
+                }
+                // The backend can finish the faulting instruction after its MMIO callback.
+                // Only inject faults for single integer transfers whose effects are fully
+                // covered by the register rollback below.
+                let mut word = [0; 4];
+                cpu.read_virtual(pc, fujimod_emulator_cpu::Access::Fetch, &mut word)?;
+                let transfer = fujimod_emulator_cpu::arm64::decode_load_store(
+                    u32::from_le_bytes(word),
+                    pc,
+                    |register| Ok(if register == 31 { sp } else { x[usize::from(register)] }),
+                )?;
+                let first = &transfer.transfers[0];
+                if transfer.simd
+                    || transfer.transfers.len() != 1
+                    || first.address != address
+                    || first.size != size
+                    || address % u64::from(size) != 0
+                    || transfer.load == value.is_some()
+                {
+                    return Err(format!("unsupported external data abort transfer at {pc:#x}"));
                 }
                 self.pending_abort[core] = Some(PendingAbort {
                     pc,

@@ -302,7 +302,8 @@ class Board:
         run. Absence leaves those registers unmodeled and refused.
 
         ``bus_error_regions`` names explicit ``(base, size)`` byte ranges on an
-        XP5 run that raise an architectural synchronous external abort on access.
+        XP5 run that raise an architectural synchronous external abort for single
+        aligned integer data transfers at AArch64 EL3 with translation disabled.
         Absence leaves those addresses unowned and refused.
         """
         configuration_id = cls._identifier(configuration_id, "configuration_id")
@@ -400,7 +401,7 @@ class Board:
                     raise ValueError(f"bus_error_regions base {base:#x} must fit in 64 bits")
                 if not 0 < size <= 0xFFFFFFFFFFFFFFFF:
                     raise ValueError(f"bus_error_regions size {size:#x} must be positive and fit in 64 bits")
-                if base + size > 0x10000000000000000:
+                if base + size > 0xFFFFFFFFFFFFFFFF:
                     raise ValueError(f"bus_error_regions range {base:#x}+{size:#x} overflows 64 bits")
                 selected_bus_error_regions.append((base, size))
         native = _native.Board.from_inputs(

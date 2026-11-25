@@ -1436,7 +1436,7 @@ mod tests {
     }
 
     /// A bus master that, on any write, queues two writes to another window.
-    struct Master;
+    pub(super) struct Master;
     impl Device for Master {
         fn name(&self) -> &'static str {
             "master"
@@ -1851,7 +1851,7 @@ mod tests {
 
 #[cfg(test)]
 mod discovery_tests {
-    use super::tests::Services;
+    use super::tests::{Master, Services};
     use super::*;
     struct Missing;
     impl Device for Missing {

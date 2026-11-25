@@ -1487,37 +1487,55 @@ mod tests {
     }
 
     #[test]
-    fn bus_error_regions_validate_overlap_and_extend_apertures_without_duplicating_covered_pages() {
+    fn bus_error_regions_validate_overlap_and_reuse_existing_apertures() {
+        use board::factory::{Graph, Peripheral, Ram};
+        use fujimod_emulator_cpu::timeline::Ratio;
+
         let selection = fujimod_catalog::ReferenceCatalog::bundled()
             .unwrap()
             .resolve("xe5", "xe5-112")
             .unwrap();
-        let make_graph = || {
-            let mut graph = graph::assemble(&selection, 0x8000_0000, Default::default(), Some(1_000_000_000)).unwrap();
-            let before = graph.peripherals.len();
-            (graph, before)
+        let soc = &selection.soc;
+        let mut graph = Graph {
+            decoders: vec![],
+            processors: vec![],
+            dma_mappings: vec![],
+            ram: vec![Ram { base: 0x8000, size: 0x4000 }],
+            mappings: vec![],
+            peripherals: soc.processors.iter().enumerate().filter_map(|(core, processor)| {
+                (processor.model == ProcessorModel::CortexA53).then_some(Peripheral {
+                    core,
+                    address: 0x10000,
+                    physical: 0x10000,
+                    size: 0x4000,
+                })
+            }).collect(),
+            instructions_per_tick: Ratio::new(1, 1).unwrap(),
         };
-        let (mut graph, before) = make_graph();
+        let initial_apertures = graph.peripherals.len();
+        assert!(initial_apertures > 0);
         let mut windows = Vec::new();
-        apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xfff1_0000, 4)]).unwrap();
-        assert_eq!(graph.peripherals.len(), before);
+
+        apply_bus_error_regions(soc, &mut graph, &mut windows, &[(0x10000, 4)]).unwrap();
+        assert_eq!(graph.peripherals.len(), initial_apertures);
         assert_eq!(windows.len(), 1);
-        assert_eq!((windows[0].base, windows[0].size, windows[0].kind.as_str()), (0xfff1_0000, 4, "bus-error"));
+        assert_eq!((windows[0].base, windows[0].size, windows[0].kind.as_str()),
+                   (0x10000, 4, "bus-error"));
 
-        let (mut graph, _) = make_graph();
-        let mut windows = Vec::new();
-        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xfff1_0000, 0)]).is_err());
-        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(u64::MAX - 1, 4)]).is_err());
-        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xfff1_0000, 8), (0xfff1_0004, 4)]).is_err());
-        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xff80_0000, 4)]).is_err());
+        apply_bus_error_regions(soc, &mut graph, &mut windows, &[(0x18000, 4)]).unwrap();
+        assert_eq!(graph.peripherals.len(), 2 * initial_apertures);
+        assert!(graph.peripherals[initial_apertures..].iter()
+            .all(|window| window.address == 0x18000 && window.size as u64 == APERTURE_GRANULE));
 
-        let (mut graph, _) = make_graph();
-        let mut windows = vec![DeviceWindow {
-            base: 0xff9b_0000,
-            size: 0x1000,
-            kind: "sdhci".into(),
-            options: Default::default(),
-        }];
-        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xff9b_0040, 4)]).is_err());
+        for (regions, reason) in [
+            (&[(0x20000, 0)][..], "must be nonempty"),
+            (&[(u64::MAX - 1, 4)][..], "address overflows"),
+            (&[(0x20000, 8), (0x20004, 4)][..], "regions overlap"),
+            (&[(0x8000, 4)][..], "overlaps physical RAM"),
+            (&[(0x10000, 4)][..], "overlaps device window"),
+        ] {
+            let error = apply_bus_error_regions(soc, &mut graph, &mut windows, regions).unwrap_err();
+            assert!(error.contains(reason), "{error}");
+        }
     }
 }

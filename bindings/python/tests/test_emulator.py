@@ -347,6 +347,10 @@ def test_board_from_inputs_validates_and_forwards_bus_error_regions(
     assert calls[-1]["bus_error_regions"] == [(0xFFF10000, 4)]
     board.close()
 
+    board = Board.from_inputs(configuration_id="xe5-112", update="update.dat")
+    assert "bus_error_regions" not in calls[-1]
+    board.close()
+
     for bad, pattern in [
         ("0xfff10000:4", "must be a sequence"),
         ([(0xFFF10000,)], "entries must be"),
