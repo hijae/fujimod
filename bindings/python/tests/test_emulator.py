@@ -270,6 +270,55 @@ def test_board_from_inputs_rejects_duplicate_overlays_before_native() -> None:
         )
 
 
+def test_board_from_inputs_validates_and_forwards_sd_host_read_only_registers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class NativeBoard:
+        instructions = [0]
+        boot_quantum = 1000
+
+        @classmethod
+        def from_inputs(cls, **options: object) -> NativeBoard:
+            calls.append(options)
+            return cls()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        board_module, "_native", SimpleNamespace(Board=NativeBoard)
+    )
+    board = Board.from_inputs(
+        configuration_id="xe5-112",
+        update="update.dat",
+        sd_host_read_only_registers={0xFC: 0x55667788, 0x40: 0x11223344},
+    )
+    assert calls[-1]["sd_host_read_only_registers"] == [
+        (0x40, 0x11223344),
+        (0xFC, 0x55667788),
+    ]
+    board.close()
+
+    for bad, pattern in [
+        ([(0x40, 1)], "must map SDHCI offsets"),
+        ({True: 0}, "non-bool integers"),
+        ({0x40: True}, "non-bool integers"),
+        ({0x3C: 0}, "4-byte aligned in 0x40..=0xfc"),
+        ({0x100: 0}, "4-byte aligned in 0x40..=0xfc"),
+        ({0x42: 0}, "4-byte aligned in 0x40..=0xfc"),
+        ({0x40: -1}, "fit in 32 bits"),
+        ({0x40: 1 << 32}, "fit in 32 bits"),
+    ]:
+        with pytest.raises((TypeError, ValueError), match=pattern):
+            Board.from_inputs(
+                configuration_id="xe5-112",
+                update="update.dat",
+                sd_host_read_only_registers=cast(dict[int, int], bad),
+            )
+
+
 def test_board_execution_policy_is_typed_and_requires_an_open_board() -> None:
     class Native:
         policy = "exact"

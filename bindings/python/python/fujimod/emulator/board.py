@@ -244,6 +244,7 @@ class Board:
         access_point: Mapping[str, object] | None = None,
         capability_reply: Sequence[int] | None = None,
         camera_settings: Mapping[str, str] | None = None,
+        sd_host_read_only_registers: Mapping[int, int] | None = None,
         engine: str | None = None,
         manifest: str | PathLike[str] | None = None,
         application_plan: str | PathLike[str] | None = None,
@@ -294,6 +295,10 @@ class Board:
         loader start boots with, such as ``{"setup": "done", "language":
         "en"}``. The profile is built from the update file and the firmware's
         catalog settings layout; absence boots the flash as installed.
+
+        ``sd_host_read_only_registers`` maps 4-byte-aligned SDHCI offsets in
+        ``0x40..=0xfc`` to explicit 32-bit read-only values on slot 1 of an XP5
+        run. Absence leaves those registers unmodeled and refused.
         """
         configuration_id = cls._identifier(configuration_id, "configuration_id")
         if isinstance(overlays, (str, bytes)) or not isinstance(overlays, Sequence):
@@ -358,6 +363,23 @@ class Board:
         if any(type(key) is not str or type(value) is not str or not key or not value
                for key, value in selected_settings.items()):
             raise TypeError("camera_settings must map nonempty strings to nonempty strings")
+        selected_sd_registers: list[tuple[int, int]] | None = None
+        if sd_host_read_only_registers is not None:
+            if not isinstance(sd_host_read_only_registers, Mapping):
+                raise TypeError("sd_host_read_only_registers must map SDHCI offsets to 32-bit integers")
+            selected_sd_registers = []
+            for offset, value in sorted(sd_host_read_only_registers.items()):
+                if type(offset) is not int or type(value) is not int:
+                    raise TypeError("sd_host_read_only_registers keys and values must be non-bool integers")
+                if not 0x40 <= offset <= 0xFC or offset % 4 != 0:
+                    raise ValueError(
+                        f"sd_host_read_only_registers offset {offset:#x} must be 4-byte aligned in 0x40..=0xfc"
+                    )
+                if not 0 <= value <= 0xFFFFFFFF:
+                    raise ValueError(
+                        f"sd_host_read_only_registers value {value:#x} at {offset:#x} must fit in 32 bits"
+                    )
+                selected_sd_registers.append((offset, value))
         native = _native.Board.from_inputs(
             configuration_id=configuration_id,
             overlays=selected_overlays,
@@ -376,6 +398,7 @@ class Board:
             access_point=access_point_text,
             capability_reply=capability,
             camera_settings=selected_settings,
+            **({} if selected_sd_registers is None else {"sd_host_read_only_registers": selected_sd_registers}),
             engine=engine,
             manifest=manifest,
             application_plan=application_plan,

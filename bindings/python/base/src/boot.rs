@@ -34,6 +34,8 @@ pub struct Inputs {
     pub capability_reply: Option<Vec<u8>>,
     /// Named camera settings of the user profile an XP5 loader start boots with.
     pub camera_settings: std::collections::BTreeMap<String, String>,
+    /// Explicit read-only 32-bit values `(offset, value)` in `0x40..=0xfc` for slot 1's SDHCI host.
+    pub sd_host_read_only_registers: Vec<(u16, u32)>,
 }
 
 /// A native catalog session with its processor-specific physical input handle.

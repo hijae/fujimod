@@ -612,6 +612,7 @@ pub(crate) fn open_from(
     rom: Option<&RomStart>,
     loader_cards: &[super::loader_card::LoaderCard],
     profile: Option<&super::profile::Placed>,
+    sd_host_read_only_registers: &[(u16, u32)],
 ) -> Result<Opened, String> {
     let mask_rom = rom.is_some_and(|start| matches!(start.entry, Entry::MaskRom(_)));
     let rom_state;
@@ -1025,6 +1026,27 @@ pub(crate) fn open_from(
     };
     let mut windows = state.device.clone();
     xp5_boot::apply_run_scene(&resolved, &mut windows, run_scene, ticks_per_second)?;
+    if !sd_host_read_only_registers.is_empty() {
+        let slot = windows
+            .iter_mut()
+            .find(|window| window.kind == "sdhci" && window.base == super::loader_card::SLOT)
+            .ok_or("SD host read-only register input requires slot 1's sdhci window")?;
+        let controller = slot
+            .options
+            .get_mut("controller")
+            .and_then(toml::Value::as_table_mut)
+            .ok_or("slot 1 sdhci window has no controller options table")?;
+        let pairs = sd_host_read_only_registers
+            .iter()
+            .map(|&(offset, value)| {
+                toml::Value::Array(vec![
+                    toml::Value::Integer(i64::from(offset)),
+                    toml::Value::Integer(i64::from(value)),
+                ])
+            })
+            .collect();
+        controller.insert("read_only_registers".into(), toml::Value::Array(pairs));
+    }
     let outputs = crate::output::Outputs::default();
     let (windows, resources) = devices_and_resources(
         state,
