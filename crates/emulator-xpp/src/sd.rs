@@ -72,6 +72,7 @@ impl Controller {
             dram_alias: true,
             address_high: None,
             speed_dividers: None,
+            read_only_registers: vec![],
         };
         let host = if let Some(irq) = irq {
             SdHost::new(

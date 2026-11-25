@@ -234,4 +234,33 @@ mod tests {
                 .contains("card media")
         );
     }
+    #[test]
+    fn sd_host_deserializes_explicit_read_only_registers_from_toml() {
+        let assets = BTreeMap::from([("setup".into(), vec![0x12, 0x34])]);
+        let mut media = resolve(vec![input()], &assets).unwrap();
+        let mut graph = DeviceGraph::new();
+        let window = DeviceWindow {
+            base: 0xffd00000,
+            size: 0x1e0,
+            kind: "sdhci".into(),
+            options: toml::from_str(
+                "[controller]\nbase=4291821568\nprotocol='sdhc'\ntransfer_ticks=4\nclock_ticks=2\nrca=1\nram_bytes=4294967296\nread_only_registers=[[0x40, 0x11223344], [0xfc, 0x55667788]]",
+            )
+            .unwrap(),
+        };
+        register(&mut graph, &window, &mut media).unwrap();
+        assert!(graph.at(0xffd00000).is_ok());
+
+        let mut bad_media = resolve(vec![input()], &assets).unwrap();
+        let bad = DeviceWindow {
+            base: 0xffd00000,
+            size: 0x1e0,
+            kind: "sdhci".into(),
+            options: toml::from_str(
+                "[controller]\nbase=4291821568\nprotocol='sdhc'\ntransfer_ticks=4\nclock_ticks=2\nrca=1\nram_bytes=4294967296\nread_only_registers=[[0x3c, 0]]",
+            )
+            .unwrap(),
+        };
+        assert!(register(&mut DeviceGraph::new(), &bad, &mut bad_media).is_err());
+    }
 }

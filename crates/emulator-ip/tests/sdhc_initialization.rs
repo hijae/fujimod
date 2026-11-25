@@ -23,6 +23,7 @@ fn options(protocol: Protocol, initialization_fault: InitializationFault) -> Opt
         dram_alias: true,
         address_high: None,
         speed_dividers: None,
+        read_only_registers: vec![],
     }
 }
 

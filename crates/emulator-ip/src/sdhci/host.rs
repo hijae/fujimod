@@ -15,6 +15,7 @@ use fujimod_emulator_devices::parts::sd_card::faults::{DataDirection, DataFault,
 use fujimod_emulator_devices::storage_reads::StorageReads;
 use fujimod_emulator_devices::{Cx, Device, bus::InterruptLine};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU16, Ordering},
@@ -82,6 +83,11 @@ pub struct Options {
     /// Optional card timing model (see `latency`); none = `transfer_ticks`.
     #[serde(default)]
     pub latency: Option<super::latency::Latency>,
+    /// Explicit read-only 32-bit values `(offset, value)` for otherwise unmodeled SDHCI
+    /// registers in `0x40..=0xfc` (4-byte aligned). Empty by default: those offsets refuse
+    /// unless supplied here. Supported only on `Protocol::Sdhc`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub read_only_registers: Vec<(u16, u32)>,
 }
 /// See [`Options::speed_dividers`].
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -204,6 +210,7 @@ pub struct SdHost {
     /// Last value written to the `address_high` word (DMA address bits 34..32).
     address_high: u32,
     latency: Option<super::latency::Model>,
+    read_only_registers: BTreeMap<u16, u32>,
 }
 /// CMD6 status (SD Physical Layer 4.3.10) of a card whose group 1 offers
 /// default and high speed and whose groups 2-6 offer function 0 only.
@@ -291,8 +298,23 @@ impl SdHost {
             .clone()
             .map(super::latency::Model::new)
             .transpose()?;
+        if !options.read_only_registers.is_empty() && options.protocol != Protocol::Sdhc {
+            return Err("SD read-only register input requires the SDHC protocol".into());
+        }
+        let mut read_only_registers = BTreeMap::new();
+        for &(offset, value) in &options.read_only_registers {
+            if !(0x40..=0xfc).contains(&offset) || offset % 4 != 0 {
+                return Err(format!(
+                    "SD read-only register offset {offset:#x} must be 4-byte aligned in 0x40..=0xfc"
+                ));
+            }
+            if read_only_registers.insert(offset, value).is_some() {
+                return Err(format!("Duplicate SD read-only register offset {offset:#x}"));
+            }
+        }
         Ok(Self {
             latency,
+            read_only_registers,
             options,
             register_gate: None,
             reads: StorageReads::default(),
@@ -1182,6 +1204,16 @@ impl SdHost {
         if let Some(index) = self.vendor_index(offset, size) {
             return u64::from(self.vendor[index]);
         }
+        if size == 4
+            && let Ok(reg) = u16::try_from(offset)
+            && let Some(&value) = self.read_only_registers.get(&reg)
+        {
+            self.advance(cx);
+            if cx.refusal().is_some() {
+                return 0;
+            }
+            return u64::from(value);
+        }
         if !self.valid(offset, size) {
             cx.unmodeled();
             return 0;
@@ -1260,6 +1292,7 @@ impl SdHost {
                         | (0x30, 4)
                         | (0x34, 4)
                         | (0x38, 4)
+                        | (0x3c, 4)
                         | (0x28, 1)
                         | (0x29, 1)
                         | (0x2e, 1)
@@ -1458,6 +1491,8 @@ struct Snapshot {
     rom_fifo_ready: bool,
     faults: Vec<DataFault>,
     fault_history: Vec<DataFaultEvent>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    read_only_registers: BTreeMap<u16, u32>,
 }
 impl Device for SdHost {
     fn card_slot(&self) -> Option<&(dyn fujimod_emulator_devices::capability::CardSlot + 'static)> {
@@ -1498,6 +1533,8 @@ impl Device for SdHost {
             rom_fifo_ready: bool,
             faults: &'a [DataFault],
             fault_history: &'a [DataFaultEvent],
+            #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+            read_only_registers: &'a BTreeMap<u16, u32>,
         }
         fujimod_emulator_devices::checkpoint::Checkpoint::encode(
             self.name(),
@@ -1524,6 +1561,7 @@ impl Device for SdHost {
                 rom_fifo_ready: self.rom_fifo_ready,
                 faults: &self.faults,
                 fault_history: &self.fault_history,
+                read_only_registers: &self.read_only_registers,
             },
         )
     }
@@ -1534,6 +1572,9 @@ impl Device for SdHost {
         let state: Snapshot = saved.decode(self.name())?;
         if state.initialization_fault != self.options.initialization_fault {
             return Err("SD initialization fault policy differs".into());
+        }
+        if state.read_only_registers != self.read_only_registers {
+            return Err("SD read-only registers differ".into());
         }
         state
             .reads
@@ -1600,6 +1641,14 @@ impl Device for SdHost {
         }
         if self.address_high != 0 {
             value["address_high"] = self.address_high.into();
+        }
+        if !self.read_only_registers.is_empty() {
+            value["read_only_registers"] = serde_json::json!(
+                self.read_only_registers
+                    .iter()
+                    .map(|(&offset, &val)| [u32::from(offset), val])
+                    .collect::<Vec<_>>()
+            );
         }
         Ok(value)
     }
@@ -1940,6 +1989,7 @@ mod tests {
                 dram_alias: true,
                 address_high: None,
                 speed_dividers: None,
+                read_only_registers: vec![],
             },
             Wiring {
                 card: Card::new(sd_card::Options {
@@ -2723,6 +2773,88 @@ mod tests {
         due(&mut m, &mut h);
         assert!(h.effects.contains(&Effect::Write(0x40001000, 512)));
         assert_eq!(&h.bytes[0x1000..0x1200], &[0x7b; 512]);
+    }
+    #[test]
+    fn sdhc_word_read_at_0x3c_combines_auto_cmd_and_host_control2() {
+        let mut m = host(Protocol::Sdhc);
+        let mut h = Ram::new(0x10000);
+        assert_eq!(read(&mut m, &mut h, 0x3c, 4), 0);
+        write(&mut m, &mut h, 0x3e, 2, 0x1130);
+        assert_eq!(read(&mut m, &mut h, 0x3c, 2), 0);
+        assert_eq!(read(&mut m, &mut h, 0x3e, 2), 0x1130);
+        assert_eq!(read(&mut m, &mut h, 0x3c, 4), 0x1130_0000);
+        // Auto CMD error status and word writes to 0x3c remain read-only.
+        let mut cx = h.cx();
+        m.write(&mut cx, BASE + 0x3c, 4, 0);
+        assert!(cx.refusal().is_some());
+        // Unmodeled read-only registers remain refused unless explicitly supplied.
+        for offset in [0x40u64, 0x44, 0xfc] {
+            let mut cx = h.cx();
+            m.read(&mut cx, BASE + offset, 4);
+            assert!(cx.refusal().is_some(), "expected refusal at {offset:#x}");
+        }
+    }
+    #[test]
+    fn sdhc_read_only_registers_return_declared_values_and_refuse_others() {
+        let mut options = Options {
+            base: BASE,
+            protocol: Protocol::Sdhc,
+            transfer_ticks: 10,
+            clock_ticks: 2,
+            rca: 0x1234,
+            ram_bytes: 0x10000,
+            initialization_fault: InitializationFault::None,
+            latency: None,
+            high_speed: false,
+            ram_banks: vec![],
+            dram_alias: true,
+            address_high: None,
+            speed_dividers: None,
+            read_only_registers: vec![(0x40, 0x1122_3344), (0xfc, 0x5566_7788)],
+        };
+        let wiring = || Wiring {
+            card: Card::new(sd_card::Options {
+                sectors: 0x800000,
+                max_dirty_sectors: 65536,
+            })
+            .unwrap(),
+            contacts: Contacts::new(true, false),
+            irq: InterruptLine::Shared(78),
+        };
+        let mut m = SdHost::new(options.clone(), wiring()).unwrap();
+        let mut h = Ram::new(0x10000);
+        assert_eq!(read(&mut m, &mut h, 0x40, 4), 0x1122_3344);
+        assert_eq!(read(&mut m, &mut h, 0xfc, 4), 0x5566_7788);
+        // Unlisted offsets, non-word reads, and writes still refuse.
+        for (offset, size) in [(0x44u64, 4u8), (0x40, 2), (0x40, 1)] {
+            let mut cx = h.cx();
+            m.read(&mut cx, BASE + offset, size);
+            assert!(cx.refusal().is_some(), "expected read refusal at {offset:#x} size {size}");
+        }
+        let mut cx = h.cx();
+        m.write(&mut cx, BASE + 0x40, 4, 0);
+        assert!(cx.refusal().is_some());
+
+        let saved = m.checkpoint().unwrap();
+        let mut same = SdHost::new(options.clone(), wiring()).unwrap();
+        same.restore_checkpoint(&saved).unwrap();
+        assert_eq!(read(&mut same, &mut h, 0x40, 4), 0x1122_3344);
+
+        let empty = host(Protocol::Sdhc);
+        assert!(empty.validate_checkpoint(&saved).is_err());
+
+        for bad in [
+            vec![(0x3c, 0)],
+            vec![(0x100, 0)],
+            vec![(0x42, 0)],
+            vec![(0x40, 1), (0x40, 2)],
+        ] {
+            options.read_only_registers = bad;
+            assert!(SdHost::new(options.clone(), wiring()).is_err());
+        }
+        options.read_only_registers = vec![(0x40, 1)];
+        options.protocol = Protocol::Application;
+        assert!(SdHost::new(options, wiring()).is_err());
     }
 }
 

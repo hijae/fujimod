@@ -34,6 +34,7 @@ fn polled_host(high_speed: bool) -> (SdHost, Ram) {
             address_high: None,
             speed_dividers: None,
             latency: None,
+            read_only_registers: vec![],
         },
         card,
         Contacts::new(true, false),
