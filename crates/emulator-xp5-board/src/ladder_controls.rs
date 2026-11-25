@@ -688,6 +688,11 @@ mod tests {
         assert_eq!(exposure.positions.len(), 8);
         let zero = exposure.positions.iter().find(|band| band.label == "0").unwrap();
         assert_eq!((zero.band_low, zero.band_high), (3992, 4095));
+        let film = options.dials.iter().find(|dial| dial.name == "film_simulation_dial").unwrap();
+        assert_eq!(film.channel, 3);
+        assert_eq!(film.positions.len(), 10);
+        let provia = &film.positions[0];
+        assert_eq!((provia.label.as_str(), provia.band_low, provia.band_high), ("PROVIA/STANDARD", 3066, 3475));
         let program = &shutter.positions[0];
         assert_eq!((program.label.as_str(), program.band_low, program.band_high), ("P", 3965, 4095));
     }

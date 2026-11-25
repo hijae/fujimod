@@ -1918,7 +1918,8 @@
       "event": 20549,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 17,
@@ -1937,7 +1938,8 @@
       "event": 20548,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 18,
@@ -1956,7 +1958,8 @@
       "event": 20547,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 19,
@@ -1975,7 +1978,8 @@
       "event": 20544,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 20,
@@ -1994,7 +1998,8 @@
       "event": 20543,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 21,
@@ -2013,7 +2018,8 @@
       "event": 20542,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 22,
@@ -2032,7 +2038,8 @@
       "event": 20541,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 23,
@@ -2051,7 +2058,8 @@
       "event": 20540,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 24,
@@ -2070,7 +2078,8 @@
       "event": 20551,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 25,
@@ -2089,7 +2098,8 @@
       "event": 20550,
       "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "film_simulation_dial"
       },
       "scanner": {
         "index": 26,

@@ -336,34 +336,84 @@
           "kind": "positions",
           "positions": [
             {
-              "id": "PROVIA/STANDARD"
+              "id": "PROVIA/STANDARD",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-24"
+              },
+              "asserted": true
             },
             {
-              "id": "Velvia/VIVID"
+              "id": "Velvia/VIVID",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-23"
+              },
+              "asserted": true
             },
             {
-              "id": "ASTIA/SOFT"
+              "id": "ASTIA/SOFT",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-22"
+              },
+              "asserted": true
             },
             {
-              "id": "CLASSIC CHROME"
+              "id": "CLASSIC CHROME",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-21"
+              },
+              "asserted": true
             },
             {
-              "id": "REALA ACE"
+              "id": "REALA ACE",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-20"
+              },
+              "asserted": true
             },
             {
-              "id": "ACROS"
+              "id": "ACROS",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-19"
+              },
+              "asserted": true
             },
             {
-              "id": "FS1"
+              "id": "FS1",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-18"
+              },
+              "asserted": true
             },
             {
-              "id": "FS2"
+              "id": "FS2",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-17"
+              },
+              "asserted": true
             },
             {
-              "id": "FS3"
+              "id": "FS3",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-26"
+              },
+              "asserted": true
             },
             {
-              "id": "C"
+              "id": "C",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-25"
+              },
+              "asserted": true
             }
           ]
         }
@@ -1175,6 +1225,63 @@
         }
       ],
       "basis": "X-E5 1.12 callback 0x0152448c reads ADC channel 7 at 0x0225c926. Factory bounds at 0x36f8..0x3746 select keys 39–58, translated by scanner rows 27–46. These bands cover the labeled whole-EV detents and C."
+    },
+    {
+      "control_id": "film_simulation_dial",
+      "channel": 3,
+      "positions": [
+        {
+          "id": "PROVIA/STANDARD",
+          "band_low": 3066,
+          "band_high": 3475
+        },
+        {
+          "id": "Velvia/VIVID",
+          "band_low": 2656,
+          "band_high": 3065
+        },
+        {
+          "id": "ASTIA/SOFT",
+          "band_low": 2248,
+          "band_high": 2655
+        },
+        {
+          "id": "CLASSIC CHROME",
+          "band_low": 1839,
+          "band_high": 2247
+        },
+        {
+          "id": "REALA ACE",
+          "band_low": 1431,
+          "band_high": 1838
+        },
+        {
+          "id": "ACROS",
+          "band_low": 1023,
+          "band_high": 1430
+        },
+        {
+          "id": "FS1",
+          "band_low": 614,
+          "band_high": 1022
+        },
+        {
+          "id": "FS2",
+          "band_low": 1,
+          "band_high": 613
+        },
+        {
+          "id": "FS3",
+          "band_low": 3887,
+          "band_high": 4095
+        },
+        {
+          "id": "C",
+          "band_low": 3476,
+          "band_high": 3886
+        }
+      ],
+      "basis": "X-E5 1.12 callback 0x01524820 reads ADC channel 3 at 0x0225c91e. Factory halfword pairs at 0x36a0..0x36c6 select the physical key per band. Scanner rows 17–26 translate these to the KEY_FSIM events named at 0x012232ac."
     }
   ]
 }
