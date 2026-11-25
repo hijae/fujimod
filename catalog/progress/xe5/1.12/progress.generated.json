@@ -290,9 +290,9 @@
           "label": "Control input",
           "stage": "stock",
           "result": "partial",
-          "passed": 12,
+          "passed": 14,
           "total": 59,
-          "detail": "12 of 59",
+          "detail": "14 of 59",
           "milestone": true
         },
         {
@@ -1956,7 +1956,7 @@
     },
     "control-input": {
       "result": "partial",
-      "passed": 12,
+      "passed": 14,
       "total": 59
     },
     "focus": {
