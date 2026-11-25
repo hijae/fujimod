@@ -1036,4 +1036,18 @@ mod tests {
         inputs.ladders.clear();
         validate_selection(&bare, &selection).unwrap();
     }
+
+    #[test]
+    fn xe5_sd_card_start_overlay_resolves_with_sd_card_start() {
+        let resolved = ResolvedConfiguration::with_overlays(
+            "xe5-112",
+            &["xe5-112-sd-card-start".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            resolved.configuration.start,
+            fujimod_catalog_configuration::RunStart::SdCard
+        );
+        assert_eq!(resolved.configuration.overlays, ["xe5-112-sd-card-start"]);
+    }
 }
