@@ -212,28 +212,68 @@
           "kind": "positions",
           "positions": [
             {
-              "id": "−3"
+              "id": "−3",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-36"
+              },
+              "asserted": true
             },
             {
-              "id": "−2"
+              "id": "−2",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-33"
+              },
+              "asserted": true
             },
             {
-              "id": "−1"
+              "id": "−1",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-30"
+              },
+              "asserted": true
             },
             {
-              "id": "0"
+              "id": "0",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-27"
+              },
+              "asserted": true
             },
             {
-              "id": "+1"
+              "id": "+1",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-44"
+              },
+              "asserted": true
             },
             {
-              "id": "+2"
+              "id": "+2",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-41"
+              },
+              "asserted": true
             },
             {
-              "id": "+3"
+              "id": "+3",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-38"
+              },
+              "asserted": true
             },
             {
-              "id": "C"
+              "id": "C",
+              "key": {
+                "kind": "scanner_row",
+                "row": "row-37"
+              },
+              "asserted": true
             }
           ]
         }
@@ -1088,6 +1128,53 @@
         }
       ],
       "basis": "X-E5 1.12 callback 0x01524148 reads 0x0225c932 (ADC channel 13) and factory bounds 0x3748..0x378e. Scanner rows 47–64 dispatch codes 59–76. Firmware event decoder 0x012232ac and shutter table 0x01a2bcb8 distinguish P, A and timed positions. The firmware also decodes 1/180, which is not marked on the dial."
+    },
+    {
+      "control_id": "exposure_compensation_dial",
+      "channel": 7,
+      "positions": [
+        {
+          "id": "−3",
+          "band_low": 2138,
+          "band_high": 2341
+        },
+        {
+          "id": "−2",
+          "band_low": 2751,
+          "band_high": 2956
+        },
+        {
+          "id": "−1",
+          "band_low": 3369,
+          "band_high": 3575
+        },
+        {
+          "id": "0",
+          "band_low": 3992,
+          "band_high": 4095
+        },
+        {
+          "id": "+1",
+          "band_low": 507,
+          "band_high": 711
+        },
+        {
+          "id": "+2",
+          "band_low": 1119,
+          "band_high": 1322
+        },
+        {
+          "id": "+3",
+          "band_low": 1730,
+          "band_high": 1933
+        },
+        {
+          "id": "C",
+          "band_low": 1934,
+          "band_high": 2137
+        }
+      ],
+      "basis": "X-E5 1.12 callback 0x0152448c reads ADC channel 7 at 0x0225c926. Factory bounds at 0x36f8..0x3746 select keys 39–58, translated by scanner rows 27–46. These bands cover the labeled whole-EV detents and C."
     }
   ]
 }

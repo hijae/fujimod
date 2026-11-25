@@ -2106,9 +2106,10 @@
     {
       "id": "row-27",
       "event": 12349,
-      "debug_key": "E-D=0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 27,
@@ -2163,9 +2164,10 @@
     {
       "id": "row-30",
       "event": 12352,
-      "debug_key": "E-D-1.0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 30,
@@ -2220,9 +2222,10 @@
     {
       "id": "row-33",
       "event": 12355,
-      "debug_key": "E-D-2.0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 33,
@@ -2277,9 +2280,10 @@
     {
       "id": "row-36",
       "event": 12358,
-      "debug_key": "E-D-3.0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 36,
@@ -2296,9 +2300,10 @@
     {
       "id": "row-37",
       "event": 12359,
-      "debug_key": "E-D=C",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 37,
@@ -2315,9 +2320,10 @@
     {
       "id": "row-38",
       "event": 12340,
-      "debug_key": "E-D+3.0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 38,
@@ -2372,9 +2378,10 @@
     {
       "id": "row-41",
       "event": 12343,
-      "debug_key": "E-D+2.0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 41,
@@ -2429,9 +2436,10 @@
     {
       "id": "row-44",
       "event": 12346,
-      "debug_key": "E-D+1.0",
+      "debug_key": null,
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "exposure_compensation_dial"
       },
       "scanner": {
         "index": 44,
