@@ -1145,8 +1145,7 @@ pub(crate) fn open_from(
         fujimod_emulator_parts_controls::encoder::Options {
             pins: Some(dial.pins),
             outputs: Default::default(),
-            // One detent edge every 2 ms, well inside the sampler's period.
-            phase_ticks: (ticks_per_second / 500).max(1),
+            phase_ticks: (ticks_per_second.saturating_mul(u64::from(dial.phase_milliseconds)) / 1000).max(1),
             rest_phase: dial.rest_phase,
         }
     };

@@ -170,6 +170,7 @@ pub struct CountingDial {
 pub struct QuadratureDial {
     pub pins: [Pin; 2],
     pub rest_phase: u8,
+    pub phase_milliseconds: u16,
     pub basis: String,
 }
 
@@ -456,7 +457,7 @@ impl Options {
                     return Err("quadrature dial pads repeat".into());
                 }
             }
-            if dial.rest_phase > 3 || dial.basis.trim().is_empty() {
+            if dial.rest_phase > 3 || dial.phase_milliseconds == 0 || dial.basis.trim().is_empty() {
                 return Err("quadrature dial needs a two-bit rest phase and a basis".into());
             }
         }
