@@ -213,6 +213,7 @@ fn extension(body: &str, options: &mut ladders::Options) -> Result<(), String> {
     match body {
         "xt5" => xt5_extension(options),
         "x100vi" => x100vi_extension(options),
+        "xe5" => xe5_extension(options),
         _ => Ok(()),
     }
 }
@@ -251,6 +252,33 @@ direction. Both pads idle low.",
         "Scanner codes 0x82/0x83 (UI 0x46/0x47) read GPIO 5.8 and 13.5; cfg3805 bit 2 sets the \
 direction. Both pads idle low.",
     ));
+    Ok(())
+}
+
+fn xe5_extension(options: &mut ladders::Options) -> Result<(), String> {
+    options.rear_dial = Some(ladders::CommandDial::Counting(ladders::CountingDial {
+        register: 0x36,
+        basis: "X-E5 1.12 at 0x01525a60 reads power-controller register 0x36 and converts the signed nibble to physical keys 0x6a/0x6b using configuration 0x3809 bit 3.".into(),
+    }));
+    options.front_dial = Some(ladders::QuadratureDial {
+        pins: [Pin { port: 0, pin: 9 }, Pin { port: 0, pin: 10 }],
+        rest_phase: 3,
+        basis: "X-E5 1.12 encoder descriptors 0x01e04150/0x01e04178, pins in 0x01e04120, phase sampler 0x0152835c and transition table 0x01e040f0. The run starts with both GPIO inputs high.".into(),
+    });
+    options.gpio_keys = vec![
+        ladders::GpioKey {
+            key: Key::RearPush,
+            pin: Pin { port: 0, pin: 13 },
+            active_high: false,
+            basis: "X-E5 1.12 scanner row 73 (physical 0x6c, UI 0x25) reads GPIO 0.13 low in 0x01524dd0.".into(),
+        },
+        ladders::GpioKey {
+            key: Key::FrontPush,
+            pin: Pin { port: 0, pin: 14 },
+            active_high: false,
+            basis: "X-E5 1.12 scanner row 66 (physical 0x52, UI 0x45) reads GPIO 0.14 low in 0x01525214.".into(),
+        },
+    ];
     Ok(())
 }
 
@@ -485,6 +513,13 @@ fn extension_ids(body: &str) -> (&'static [(Key, &'static str, &'static str)], &
                 ("power", "power_switch"),
             ],
         ),
+        "xe5" => (
+            &[
+                (Key::RearPush, "rear_command_dial.push", "Rear command dial press"),
+                (Key::FrontPush, "front_command_dial.push", "Front command dial press"),
+            ],
+            &[],
+        ),
         _ => (&[], &[]),
     }
 }
@@ -674,6 +709,15 @@ mod tests {
             })
             .collect();
         assert_eq!(channels, [1, 2, 8, 11, 14]);
+        assert!(matches!(options.rear_dial, Some(ladders::CommandDial::Counting(dial)) if dial.register == 0x36));
+        let front = options.front_dial.as_ref().unwrap();
+        assert_eq!(front.pins, [Pin { port: 0, pin: 9 }, Pin { port: 0, pin: 10 }]);
+        assert_eq!(front.rest_phase, 3);
+        let switches: Vec<_> = options.gpio_keys.iter().map(|key| (key.key, key.pin, key.active_high)).collect();
+        assert_eq!(switches, [
+            (Key::RearPush, Pin { port: 0, pin: 13 }, false),
+            (Key::FrontPush, Pin { port: 0, pin: 14 }, false),
+        ]);
         let focus = options.dials.iter().find(|dial| dial.name == "focus_mode_selector").unwrap();
         assert_eq!(focus.channel, 9);
         let bands: Vec<_> = focus.positions.iter()

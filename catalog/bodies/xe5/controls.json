@@ -550,6 +550,10 @@
         "kind": "dial",
         "motion": {
           "kind": "steps"
+        },
+        "press": {
+          "kind": "debug_key",
+          "name": "CMD2_PUSH"
         }
       }
     },
@@ -673,6 +677,10 @@
         "kind": "dial",
         "motion": {
           "kind": "steps"
+        },
+        "press": {
+          "kind": "debug_key",
+          "name": "CMD_PUSH"
         }
       }
     },

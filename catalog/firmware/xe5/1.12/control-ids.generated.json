@@ -2885,7 +2885,8 @@
       "event": 69,
       "debug_key": "CMD2_PUSH",
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "front_command_dial"
       },
       "scanner": {
         "index": 66,
@@ -3022,7 +3023,8 @@
       "event": 37,
       "debug_key": "CMD_PUSH",
       "target": {
-        "kind": "unclaimed"
+        "kind": "control",
+        "control_id": "rear_command_dial"
       },
       "scanner": {
         "index": 73,

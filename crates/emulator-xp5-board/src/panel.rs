@@ -570,7 +570,7 @@ mod tests {
             gpio: "gpio".into(),
             power: ("spi".into(), 2),
             rear_dial: None,
-            front_dial: None,
+            front_dial: Some("front-dial".into()),
         };
         let panel = compile(
             &options,
