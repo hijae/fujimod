@@ -42,6 +42,8 @@ pub struct Startup {
     pub camera_settings: BTreeMap<String, String>,
     /// Explicit read-only 32-bit values `(offset, value)` in `0x40..=0xfc` for slot 1's SDHCI host.
     pub sd_host_read_only_registers: Vec<(u16, u32)>,
+    /// Explicit `(base, size)` regions that raise an architectural synchronous external abort.
+    pub bus_error_regions: Vec<(u64, u64)>,
 }
 
 pub(crate) struct RunFacts {
@@ -59,7 +61,7 @@ pub(super) fn open_startup(
 ) -> Result<crate::Camera, String> {
     let Startup { update, manifest, boot_rom: rom_path, card_image: sd_image, card_files,
         second_card_image, second_card_files, scene, output: run_directory, mode, quantum: quantum_override,
-        camera_settings, sd_host_read_only_registers } = startup;
+        camera_settings, sd_host_read_only_registers, bus_error_regions } = startup;
     let start = configuration.configuration.start;
     if start == RunStart::SdCard && sd_image.is_none()
         && !card_files.iter().any(|(name, _)| name.eq_ignore_ascii_case(rom_start::CARD_FILE_NAME))
@@ -145,6 +147,7 @@ pub(super) fn open_startup(
         &loader,
         profile.as_ref(),
         &sd_host_read_only_registers,
+        &bus_error_regions,
     )?;
     let card_write_back = loader.into_iter().filter_map(|card| card.write_back).collect();
     let open::Opened {

@@ -42,6 +42,9 @@ impl Boot for CatalogBoot {
             if !inputs.sd_host_read_only_registers.is_empty() {
                 return Err("SD host read-only register inputs require an XP5 run configuration".into());
             }
+            if !inputs.bus_error_regions.is_empty() {
+                return Err("bus-error region inputs require an XP5 run configuration".into());
+            }
             let plan = inputs.application_plan.ok_or("application startup needs an application plan")?;
             let startup = boot::application::Startup {
                 update: inputs.update, plan, discovery: inputs.discovery, quantum: inputs.quantum,
@@ -85,6 +88,7 @@ impl Boot for CatalogBoot {
                 output: None,
                 mode, quantum: inputs.quantum, camera_settings: inputs.camera_settings,
                 sd_host_read_only_registers: inputs.sd_host_read_only_registers,
+                bus_error_regions: inputs.bus_error_regions,
             }))?;
             let inputs = camera.take_xp5_inputs()?;
             let read_limit = camera.read_limit;
@@ -102,6 +106,9 @@ impl Boot for CatalogBoot {
         }
         if !inputs.sd_host_read_only_registers.is_empty() {
             return Err("SD host read-only register inputs require an XP5 run configuration".into());
+        }
+        if !inputs.bus_error_regions.is_empty() {
+            return Err("bus-error region inputs require an XP5 run configuration".into());
         }
         if let Some(quantum) = inputs.quantum {
             if quantum == 0 {

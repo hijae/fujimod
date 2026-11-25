@@ -86,7 +86,11 @@ impl Keyframe {
 }
 impl State {
     fn checkpoint_boundary(&self) -> Result<(), String> {
-        if self.active_slice.is_some() || self.parallel.is_some() || self.memory_access {
+        if self.active_slice.is_some()
+            || self.parallel.is_some()
+            || self.memory_access
+            || self.pending_abort.iter().any(Option::is_some)
+        {
             return Err("keyframe requires a stopped board".into());
         }
         Ok(())
@@ -147,6 +151,7 @@ impl State {
             parallel: _,
             decoders: _,
             memory_access: _,
+            pending_abort: _,
             continuation: _,
             // Host loop fast-forward configuration, wiring and counters; the
             // proof leaves no architectural trace to restore.

@@ -356,6 +356,7 @@ impl RunHost {
             quantum: quantum_override,
             camera_settings,
             sd_host_read_only_registers: Vec::new(),
+            bus_error_regions: Vec::new(),
         };
         let crate::Camera {
             mut session,

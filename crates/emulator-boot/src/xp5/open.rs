@@ -406,6 +406,92 @@ fn plan_aperture(
     Ok(Some((first, last - first)))
 }
 
+fn apply_bus_error_regions(
+    soc: &Soc,
+    execution: &mut board::factory::Graph,
+    windows: &mut Vec<DeviceWindow>,
+    regions: &[(u64, u64)],
+) -> Result<(), String> {
+    let mut spans = Vec::with_capacity(regions.len());
+    for &(base, size) in regions {
+        if size == 0 {
+            return Err("bus-error region must be nonempty".into());
+        }
+        let end = base
+            .checked_add(size)
+            .ok_or("bus-error region address overflows")?;
+        if execution
+            .ram
+            .iter()
+            .any(|ram| base < ram.base + ram.size as u64 && ram.base < end)
+        {
+            return Err(format!(
+                "bus-error region {base:#x}+{size:#x} overlaps physical RAM"
+            ));
+        }
+        if execution
+            .mappings
+            .iter()
+            .any(|mapping| base < mapping.address + mapping.size as u64 && mapping.address < end)
+        {
+            return Err(format!(
+                "bus-error region {base:#x}+{size:#x} overlaps CPU memory mapping"
+            ));
+        }
+        if windows
+            .iter()
+            .any(|window| base < window.base + window.size && window.base < end)
+        {
+            return Err(format!(
+                "bus-error region {base:#x}+{size:#x} overlaps device window"
+            ));
+        }
+        spans.push((base, end));
+    }
+    spans.sort_unstable();
+    if spans.windows(2).any(|pair| pair[0].1 > pair[1].0) {
+        return Err("bus-error regions overlap".into());
+    }
+    for (core, processor) in soc.processors.iter().enumerate() {
+        if processor.model != ProcessorModel::CortexA53 {
+            continue;
+        }
+        let mut occupied: Vec<(u64, u64)> = Vec::new();
+        for existing in execution.peripherals.iter().filter(|existing| existing.core == core) {
+            occupied.push((existing.address, existing.size as u64));
+        }
+        for ram in &execution.ram {
+            occupied.push((ram.base, ram.size as u64));
+        }
+        for mapping in execution.mappings.iter().filter(|mapping| mapping.core == core) {
+            occupied.push((mapping.address, mapping.size as u64));
+        }
+        for &(base, size) in regions {
+            if let Some((start, aperture_size)) = plan_aperture(base, size, &occupied)
+                .map_err(|error| format!("bus-error region {base:#x}+{size:#x}: {error}"))?
+            {
+                occupied.push((start, aperture_size));
+                execution.peripherals.push(board::factory::Peripheral {
+                    core,
+                    address: start,
+                    physical: start,
+                    size: usize::try_from(aperture_size)
+                        .map_err(|_| "bus-error aperture exceeds host address space")?,
+                });
+            }
+        }
+    }
+    for &(base, size) in regions {
+        windows.push(DeviceWindow {
+            base,
+            size,
+            kind: "bus-error".into(),
+            options: Default::default(),
+        });
+    }
+    Ok(())
+}
+
 const FLASH_APERTURE_BASE: u64 = 0xf000_0000;
 const FLASH_APERTURE_SIZE: usize = 0x0800_0000;
 
@@ -613,6 +699,7 @@ pub(crate) fn open_from(
     loader_cards: &[super::loader_card::LoaderCard],
     profile: Option<&super::profile::Placed>,
     sd_host_read_only_registers: &[(u16, u32)],
+    bus_error_regions: &[(u64, u64)],
 ) -> Result<Opened, String> {
     let mask_rom = rom.is_some_and(|start| matches!(start.entry, Entry::MaskRom(_)));
     let rom_state;
@@ -1047,6 +1134,14 @@ pub(crate) fn open_from(
             .collect();
         controller.insert("read_only_registers".into(), toml::Value::Array(pairs));
     }
+    if !bus_error_regions.is_empty() {
+        apply_bus_error_regions(
+            &resolved.reference.soc,
+            &mut execution,
+            &mut windows,
+            bus_error_regions,
+        )?;
+    }
     let outputs = crate::output::Outputs::default();
     let (windows, resources) = devices_and_resources(
         state,
@@ -1110,6 +1205,19 @@ pub(crate) fn open_from(
         object.insert(
             "dram".into(),
             json!({"limit": dram.limit, "bus_drain": dram.bus_drain}),
+        );
+    }
+    if !bus_error_regions.is_empty()
+        && let Some(object) = definition.as_object_mut()
+    {
+        object.insert(
+            "bus_error_regions".into(),
+            json!(
+                bus_error_regions
+                    .iter()
+                    .map(|&(base, size)| json!({"base": base, "size": size}))
+                    .collect::<Vec<_>>()
+            ),
         );
     }
     // A DMA master reads memory, not bus devices, so a start without a ROM gets the ROM start's
@@ -1376,5 +1484,40 @@ mod tests {
         assert!(plan_aperture(0xfb1a_0000, 0x1000, &[(0xfb1a_2000, 0x2000)]).is_err());
         assert!(plan_aperture(u64::MAX - 0x10, 0x100, &[]).is_err());
         assert!(plan_aperture(0xfb5a_0000, 0, &[]).is_err());
+    }
+
+    #[test]
+    fn bus_error_regions_validate_overlap_and_extend_apertures_without_duplicating_covered_pages() {
+        let selection = fujimod_catalog::ReferenceCatalog::bundled()
+            .unwrap()
+            .resolve("xe5", "xe5-112")
+            .unwrap();
+        let make_graph = || {
+            let mut graph = graph::assemble(&selection, 0x8000_0000, Default::default(), Some(1_000_000_000)).unwrap();
+            let before = graph.peripherals.len();
+            (graph, before)
+        };
+        let (mut graph, before) = make_graph();
+        let mut windows = Vec::new();
+        apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xfff1_0000, 4)]).unwrap();
+        assert_eq!(graph.peripherals.len(), before);
+        assert_eq!(windows.len(), 1);
+        assert_eq!((windows[0].base, windows[0].size, windows[0].kind.as_str()), (0xfff1_0000, 4, "bus-error"));
+
+        let (mut graph, _) = make_graph();
+        let mut windows = Vec::new();
+        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xfff1_0000, 0)]).is_err());
+        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(u64::MAX - 1, 4)]).is_err());
+        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xfff1_0000, 8), (0xfff1_0004, 4)]).is_err());
+        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xff80_0000, 4)]).is_err());
+
+        let (mut graph, _) = make_graph();
+        let mut windows = vec![DeviceWindow {
+            base: 0xff9b_0000,
+            size: 0x1000,
+            kind: "sdhci".into(),
+            options: Default::default(),
+        }];
+        assert!(apply_bus_error_regions(&selection.soc, &mut graph, &mut windows, &[(0xff9b_0040, 4)]).is_err());
     }
 }

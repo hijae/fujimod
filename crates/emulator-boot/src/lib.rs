@@ -870,6 +870,7 @@ pub fn open_request(resolved: ResolvedConfiguration, request: Request) -> Result
             quantum: None,
             camera_settings: Default::default(),
             sd_host_read_only_registers: Vec::new(),
+            bus_error_regions: Vec::new(),
         }),
         _ if resolved.reference.soc.id == "xpp" => StartupInputs::Application(application::Startup {
             update: request.update,

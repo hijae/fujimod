@@ -69,6 +69,7 @@ class emulator:
             capability_reply: bytes | None = None,
             camera_settings: Mapping[str, str] = ...,
             sd_host_read_only_registers: Sequence[tuple[int, int]] = ...,
+            bus_error_regions: Sequence[tuple[int, int]] = ...,
             engine: str | None = None,
             manifest: str | PathLike[str] | None = None,
             application_plan: str | PathLike[str] | None = None,

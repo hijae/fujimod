@@ -171,6 +171,7 @@ pub struct Cx<'a> {
     host: &'a mut dyn Host,
     refusal: Option<String>,
     unmodeled: bool,
+    bus_error: bool,
     tick_override: Option<u64>,
     posted_writes: Vec<PostedWrite>,
 }
@@ -192,6 +193,7 @@ impl<'a> Cx<'a> {
             host,
             refusal: None,
             unmodeled: false,
+            bus_error: false,
             tick_override: None,
             posted_writes: Vec::new(),
         }
@@ -299,6 +301,15 @@ impl<'a> Cx<'a> {
     }
     pub fn is_unmodeled(&self) -> bool {
         self.unmodeled
+    }
+    /// Signal an architectural synchronous external bus error for this access.
+    pub fn bus_error(&mut self) {
+        if self.refusal.is_none() {
+            self.bus_error = true;
+        }
+    }
+    pub fn is_bus_error(&self) -> bool {
+        self.bus_error
     }
     /// Refuse this access: the runtime stops with `reason`.
     /// The first refusal wins.

@@ -319,6 +319,51 @@ def test_board_from_inputs_validates_and_forwards_sd_host_read_only_registers(
             )
 
 
+def test_board_from_inputs_validates_and_forwards_bus_error_regions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class NativeBoard:
+        instructions = [0]
+        boot_quantum = 1000
+
+        @classmethod
+        def from_inputs(cls, **options: object) -> NativeBoard:
+            calls.append(options)
+            return cls()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        board_module, "_native", SimpleNamespace(Board=NativeBoard)
+    )
+    board = Board.from_inputs(
+        configuration_id="xe5-112",
+        update="update.dat",
+        bus_error_regions=[(0xFFF10000, 4)],
+    )
+    assert calls[-1]["bus_error_regions"] == [(0xFFF10000, 4)]
+    board.close()
+
+    for bad, pattern in [
+        ("0xfff10000:4", "must be a sequence"),
+        ([(0xFFF10000,)], "entries must be"),
+        ([(True, 4)], "non-bool integers"),
+        ([(0xFFF10000, False)], "non-bool integers"),
+        ([(-1, 4)], "fit in 64 bits"),
+        ([(0xFFF10000, 0)], "positive and fit in 64 bits"),
+        ([(0xFFFFFFFFFFFFFFFF, 2)], "overflows 64 bits"),
+    ]:
+        with pytest.raises((TypeError, ValueError), match=pattern):
+            Board.from_inputs(
+                configuration_id="xe5-112",
+                update="update.dat",
+                bus_error_regions=cast(list[tuple[int, int]], bad),
+            )
+
+
 def test_board_execution_policy_is_typed_and_requires_an_open_board() -> None:
     class Native:
         policy = "exact"

@@ -245,6 +245,7 @@ class Board:
         capability_reply: Sequence[int] | None = None,
         camera_settings: Mapping[str, str] | None = None,
         sd_host_read_only_registers: Mapping[int, int] | None = None,
+        bus_error_regions: Sequence[tuple[int, int]] | None = None,
         engine: str | None = None,
         manifest: str | PathLike[str] | None = None,
         application_plan: str | PathLike[str] | None = None,
@@ -299,6 +300,10 @@ class Board:
         ``sd_host_read_only_registers`` maps 4-byte-aligned SDHCI offsets in
         ``0x40..=0xfc`` to explicit 32-bit read-only values on slot 1 of an XP5
         run. Absence leaves those registers unmodeled and refused.
+
+        ``bus_error_regions`` names explicit ``(base, size)`` byte ranges on an
+        XP5 run that raise an architectural synchronous external abort on access.
+        Absence leaves those addresses unowned and refused.
         """
         configuration_id = cls._identifier(configuration_id, "configuration_id")
         if isinstance(overlays, (str, bytes)) or not isinstance(overlays, Sequence):
@@ -380,6 +385,24 @@ class Board:
                         f"sd_host_read_only_registers value {value:#x} at {offset:#x} must fit in 32 bits"
                     )
                 selected_sd_registers.append((offset, value))
+        selected_bus_error_regions: list[tuple[int, int]] | None = None
+        if bus_error_regions is not None:
+            if isinstance(bus_error_regions, (str, bytes)) or not isinstance(bus_error_regions, Sequence):
+                raise TypeError("bus_error_regions must be a sequence of (base, size) pairs")
+            selected_bus_error_regions = []
+            for entry in bus_error_regions:
+                if isinstance(entry, (str, bytes)) or not isinstance(entry, Sequence) or len(entry) != 2:
+                    raise TypeError("bus_error_regions entries must be (base, size) pairs")
+                base, size = entry[0], entry[1]
+                if type(base) is not int or type(size) is not int:
+                    raise TypeError("bus_error_regions base and size must be non-bool integers")
+                if not 0 <= base <= 0xFFFFFFFFFFFFFFFF:
+                    raise ValueError(f"bus_error_regions base {base:#x} must fit in 64 bits")
+                if not 0 < size <= 0xFFFFFFFFFFFFFFFF:
+                    raise ValueError(f"bus_error_regions size {size:#x} must be positive and fit in 64 bits")
+                if base + size > 0x10000000000000000:
+                    raise ValueError(f"bus_error_regions range {base:#x}+{size:#x} overflows 64 bits")
+                selected_bus_error_regions.append((base, size))
         native = _native.Board.from_inputs(
             configuration_id=configuration_id,
             overlays=selected_overlays,
@@ -399,6 +422,7 @@ class Board:
             capability_reply=capability,
             camera_settings=selected_settings,
             **({} if selected_sd_registers is None else {"sd_host_read_only_registers": selected_sd_registers}),
+            **({} if selected_bus_error_regions is None else {"bus_error_regions": selected_bus_error_regions}),
             engine=engine,
             manifest=manifest,
             application_plan=application_plan,

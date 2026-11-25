@@ -261,6 +261,18 @@ impl StoreObserverCounters {
     }
 }
 
+struct Aarch64AbortState {
+    x: [u64; 31],
+    sp: u64,
+    pstate: u64,
+}
+struct PendingAbort {
+    pc: u64,
+    address: u64,
+    write: bool,
+    aarch64_state: Aarch64AbortState,
+}
+
 struct State {
     continuation: Rc<RefCell<continuation::Stops>>,
     host_pause: Rc<Cell<bool>>,
@@ -333,6 +345,7 @@ struct State {
     parallel: Option<interactive::Epoch>,
     decoders: decoder::Decoders,
     memory_access: bool,
+    pending_abort: Vec<Option<PendingAbort>>,
     mprofile_loops: loops::MProfileLoops,
     access_histogram: Option<access_histogram::SharedStatistics>,
     store_observer: Option<Vec<StoreObserverCounters>>,
@@ -714,6 +727,7 @@ impl Board {
             parallel: None,
             decoders: decoder::Decoders::default(),
             memory_access: false,
+            pending_abort: (0..n).map(|_| None).collect(),
             mprofile_loops: loops::MProfileLoops::new(n),
             access_histogram: register_access_histogram.clone(),
             store_observer: store_observer.clone(),
@@ -1349,6 +1363,11 @@ impl Board {
             if let Some(error) = s.error.take() {
                 return Err(error);
             }
+            if result.is_ok() {
+                s.deliver_pending_abort(&**cpu, core)?;
+            } else {
+                s.pending_abort[core] = None;
+            }
             if s.continuation.borrow().fired
                 || self.host_pause.get()
                 || self.isolated_core.get().is_some_and(|core| s.waiting[core])
@@ -1603,7 +1622,7 @@ impl Board {
                 let resume = s.blocks[core]
                     .as_mut()
                     .is_some_and(|blocks| std::mem::take(&mut blocks.resume));
-                if !(resync || resume) || s.error.is_some() {
+                if !(resync || resume) || s.error.is_some() || s.pending_abort[core].is_some() {
                     break;
                 }
                 if !blocks {
@@ -1644,6 +1663,11 @@ impl Board {
             s.sync(&**cpu, core)?;
             if let Some(error) = s.error.take() {
                 return Err(error);
+            }
+            if result.is_ok() {
+                s.deliver_pending_abort(&**cpu, core)?;
+            } else {
+                s.pending_abort[core] = None;
             }
             // Unicorn reports disabled VFP/Advanced SIMD as an invalid
             // instruction; the Cortex-A7 takes the undefined exception.
@@ -3053,6 +3077,9 @@ impl State {
         value: Option<u64>,
     ) -> Result<u64, String> {
         let core = binding.core;
+        if self.pending_abort[core].is_some() {
+            return Ok(0);
+        }
         if self.decoders.pending() {
             return Err("MMIO requires committed memory decoding".into());
         }
@@ -3108,7 +3135,29 @@ impl State {
             bus.access(host, core, pc, address, size, value)
         });
         self.memory_access = false;
-        let result = result?;
+        let result = match result? {
+            bus::AccessOutcome::Value(value) => value,
+            bus::AccessOutcome::BusError => {
+                if cpus[core].model() != fujimod_emulator_cpu::Model::ArmV8A {
+                    return Err("synchronous external data abort is only modeled for ArmV8A".into());
+                }
+                let cpu = &*cpus[core];
+                let pstate = scalar(cpu, Register::Pstate)?;
+                let sp = scalar(cpu, Register::Sp)?;
+                let mut x = [0u64; 31];
+                for (index, slot) in x.iter_mut().enumerate() {
+                    *slot = scalar(cpu, Register::X(index as u8))?;
+                }
+                self.pending_abort[core] = Some(PendingAbort {
+                    pc,
+                    address,
+                    write: value.is_some(),
+                    aarch64_state: Aarch64AbortState { x, sp, pstate },
+                });
+                cpu.stop()?;
+                return Ok(0);
+            }
+        };
         self.refresh_deadlines()?;
         self.refresh_processors()?;
         self.due(cpus)?;
@@ -3120,6 +3169,28 @@ impl State {
         }
         self.tighten(&*cpus[core], core)?;
         Ok(result)
+    }
+    fn deliver_pending_abort(&mut self, cpu: &dyn Cpu, core: usize) -> Result<(), String> {
+        let Some(abort) = self.pending_abort[core].take() else {
+            return Ok(());
+        };
+        if cpu.model() != fujimod_emulator_cpu::Model::ArmV8A {
+            return Err("synchronous external data abort is only modeled for ArmV8A".into());
+        }
+        set(cpu, Register::Pstate, abort.aarch64_state.pstate)?;
+        set(cpu, Register::Sp, abort.aarch64_state.sp)?;
+        for (index, value) in abort.aarch64_state.x.into_iter().enumerate() {
+            set(cpu, Register::X(index as u8), value)?;
+        }
+        fujimod_emulator_cpu::arm64::enter_external_data_abort(
+            cpu,
+            abort.pc,
+            abort.address,
+            abort.write,
+        )?;
+        self.polls.last[core] = None;
+        self.settled.clear();
+        Ok(())
     }
     /// After a device read of an AArch64 processor: recognise a poll loop
     /// that came round unchanged (`poll_loops`) and account the rounds that

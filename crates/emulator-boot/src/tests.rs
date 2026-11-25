@@ -1096,6 +1096,7 @@ fn common_open_checks_generation_before_loading_startup_files() {
         quantum: None,
         camera_settings: Default::default(),
         sd_host_read_only_registers: Vec::new(),
+        bus_error_regions: Vec::new(),
     });
     assert_eq!(
         open(resolved, inputs).err().unwrap(),

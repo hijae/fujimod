@@ -1171,3 +1171,143 @@ fn generation_publications_stop_at_the_same_instruction_without_serializing() {
         assert_eq!(board.state()["timeline"]["now"], 7);
     }
 }
+
+#[test]
+fn aarch64_bus_error_region_delivers_el3_external_data_abort_and_leaves_neighbors_unowned() {
+    use factory::*;
+    use fujimod_emulator_cpu::arm64;
+
+    let make_board = |with_bus_error: bool, pc: u64, target: u64| {
+        let vbar = fujimod_emulator_cpu::Register::Arm64System(
+            arm64::system_register("VBAR_EL3").unwrap(),
+        );
+        let graph = Graph {
+            decoders: vec![],
+            processors: vec![Processor {
+                model: Model::ArmV8A,
+                registers: vec![
+                    (Register::Pc, pc),
+                    (Register::Pstate, 0x2000_02cd),
+                    (Register::Sp, 0x17000),
+                    (vbar, 0x12000),
+                    (Register::X(1), target),
+                    (Register::X(3), 0x55aa_1234),
+                ],
+                released: true,
+                parked_until_sgi: false,
+                mprofile: None,
+                rprofile: None,
+            }],
+            dma_mappings: vec![crate::board::memory::BusMapping::ram(0x10000, 0x8000)],
+            ram: vec![Ram {
+                base: 0x10000,
+                size: 0x8000,
+            }],
+            mappings: vec![MemoryMap {
+                core: 0,
+                address: 0x10000,
+                physical: 0x10000,
+                size: 0x8000,
+                permissions: 7,
+            }],
+            peripherals: vec![Peripheral {
+                core: 0,
+                address: 0xfff1_0000,
+                physical: 0xfff1_0000,
+                size: 0x4000,
+            }],
+            instructions_per_tick: Ratio::new(1, 1).unwrap(),
+        };
+        let mut bus = Bus::new(bus::Mode::Strict);
+        if with_bus_error {
+            bus.register(
+                0xfff1_0000,
+                4,
+                Box::new(fujimod_emulator_devices::bus_error::BusError),
+            )
+            .unwrap();
+        }
+        let mut board = graph
+            .build(
+                Options::new(RunEngine::Unicorn).with_translation_cache_size_bytes(1024 * 1024),
+                bus,
+                None,
+            )
+            .unwrap();
+        let cpu = board.cpu(0).unwrap();
+        let write_words = |offset: u64, words: &[u32]| {
+            cpu.write_memory(
+                offset,
+                &words
+                    .iter()
+                    .flat_map(|w| w.to_le_bytes())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+        };
+        // 0x10000: ldr w3, [x1], #4; mov x10, #1; b 0x10010; recover(0x1000c): mov x10, #2; b .
+        write_words(
+            0x10000,
+            &[0xb840_4423, 0xd280_002a, 0x1400_0002, 0xd280_004a, 0x1400_0000],
+        );
+        // 0x10020: str w3, [x1], #4; b .
+        write_words(0x10020, &[0xb800_4423, 0x1400_0000]);
+        // 0x12200 (VBAR_EL3 + 0x200): capture ESR/FAR/ELR/SPSR/X1/X3, set ELR=0x1000c, eret.
+        write_words(
+            0x12200,
+            &[
+                0xd53e_5214, // mrs x20, esr_el3
+                0xd53e_6015, // mrs x21, far_el3
+                0xd53e_4036, // mrs x22, elr_el3
+                0xd53e_4017, // mrs x23, spsr_el3
+                0xaa01_03f8, // mov x24, x1
+                0xaa03_03f9, // mov x25, x3
+                0xd2a0_003a, // mov x26, #0x10000
+                0xf280_019a, // movk x26, #0xc
+                0xd51e_403a, // msr elr_el3, x26
+                0xd69f_03e0, // eret
+            ],
+        );
+        board
+    };
+
+    // Without the bus-error region, reading 0xfff10000 still refuses as unowned MMIO.
+    let mut plain = make_board(false, 0x10000, 0xfff1_0000);
+    let err = plain.run_for_instructions(16, 100).unwrap_err();
+    assert!(
+        err.contains("unmodeled MMIO read4 at 0xfff10000") && err.contains("unowned MMIO"),
+        "{err}"
+    );
+
+    // With the 4-byte bus-error region at 0xfff10000, the load takes an EL3 external abort,
+    // preserves pre-instruction X1/X3, populates ESR/FAR/ELR/SPSR, and resumes at 0x1000c.
+    let mut read_board = make_board(true, 0x10000, 0xfff1_0000);
+    read_board.run_for_instructions(16, 100).unwrap();
+    let cpu = read_board.cpu(0).unwrap();
+    assert_eq!(scalar(cpu, Register::X(20)).unwrap(), 0x9600_0010);
+    assert_eq!(scalar(cpu, Register::X(21)).unwrap(), 0xfff1_0000);
+    assert_eq!(scalar(cpu, Register::X(22)).unwrap(), 0x10000);
+    assert_eq!(scalar(cpu, Register::X(23)).unwrap(), 0x2000_02cd);
+    assert_eq!(scalar(cpu, Register::X(24)).unwrap(), 0xfff1_0000);
+    assert_eq!(scalar(cpu, Register::X(25)).unwrap(), 0x55aa_1234);
+    assert_eq!(scalar(cpu, Register::X(10)).unwrap(), 2);
+    assert_eq!(scalar(cpu, Register::Pc).unwrap(), 0x10010);
+
+    // Store to the bus-error region sets WnR (0x96000050) and preserves X1.
+    let mut write_board = make_board(true, 0x10020, 0xfff1_0000);
+    write_board.run_for_instructions(16, 100).unwrap();
+    let cpu = write_board.cpu(0).unwrap();
+    assert_eq!(scalar(cpu, Register::X(20)).unwrap(), 0x9600_0050);
+    assert_eq!(scalar(cpu, Register::X(21)).unwrap(), 0xfff1_0000);
+    assert_eq!(scalar(cpu, Register::X(22)).unwrap(), 0x10020);
+    assert_eq!(scalar(cpu, Register::X(24)).unwrap(), 0xfff1_0000);
+    assert_eq!(scalar(cpu, Register::X(10)).unwrap(), 2);
+
+    // Reading at 0xfff10004 (outside the 4-byte region) still refuses as unowned MMIO.
+    let mut neighbor = make_board(true, 0x10000, 0xfff1_0004);
+    let err = neighbor.run_for_instructions(16, 100).unwrap_err();
+    assert!(
+        err.contains("unmodeled MMIO read4 at 0xfff10004") && err.contains("unowned MMIO"),
+        "{err}"
+    );
+}

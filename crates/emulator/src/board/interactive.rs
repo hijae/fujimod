@@ -349,6 +349,15 @@ impl Board {
             }
         }
         state.active_slice = None;
+        for entry in &entries {
+            if error.is_none() {
+                if let Err(e) = state.deliver_pending_abort(&*self.cpus[entry.core], entry.core) {
+                    error.get_or_insert(e);
+                }
+            } else {
+                state.pending_abort[entry.core] = None;
+            }
+        }
         for mut entry in entries {
             if let Some(exit) = entry.exit
                 && let Err(e) =

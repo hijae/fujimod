@@ -36,6 +36,8 @@ pub struct Inputs {
     pub camera_settings: std::collections::BTreeMap<String, String>,
     /// Explicit read-only 32-bit values `(offset, value)` in `0x40..=0xfc` for slot 1's SDHCI host.
     pub sd_host_read_only_registers: Vec<(u16, u32)>,
+    /// Explicit `(base, size)` regions that raise an architectural synchronous external abort.
+    pub bus_error_regions: Vec<(u64, u64)>,
 }
 
 /// A native catalog session with its processor-specific physical input handle.

@@ -7,6 +7,19 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 mod checkpoint;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AccessOutcome {
+    Value(u64),
+    BusError,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CallOutcome {
+    Supported,
+    Unmodeled,
+    BusError,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Mode {
     Strict,
@@ -647,14 +660,16 @@ impl Bus {
         self.windows[device].native_dependencies = sources;
         Ok(())
     }
-    fn outcome(cx: &mut Cx<'_>) -> Result<bool, String> {
+    fn outcome(cx: &mut Cx<'_>) -> Result<CallOutcome, String> {
         if cx.is_unmodeled() {
-            return Ok(false);
+            return Ok(CallOutcome::Unmodeled);
         }
         if let Some(reason) = cx.take_refusal() {
             Err(reason)
+        } else if cx.is_bus_error() {
+            Ok(CallOutcome::BusError)
         } else {
-            Ok(true)
+            Ok(CallOutcome::Supported)
         }
     }
     /// A bounded passive observer. Truncation never changes dispatch or results.
@@ -723,7 +738,7 @@ impl Bus {
         address: u64,
         size: u8,
         value: Option<u64>,
-    ) -> Result<u64, String> {
+    ) -> Result<AccessOutcome, String> {
         let result = self.dispatch(host, cpu, pc, address, size, value);
         if let Some(log) = &mut self.transactions {
             if log.ranges.as_ref().is_some_and(|ranges| {
@@ -734,14 +749,18 @@ impl Bus {
                 return result;
             }
             if log.rows.len() < log.limit {
+                let (logged_value, accepted) = match &result {
+                    Ok(AccessOutcome::Value(read_value)) => (value.unwrap_or(*read_value), true),
+                    Ok(AccessOutcome::BusError) | Err(_) => (value.unwrap_or(0), false),
+                };
                 log.rows.push(Transaction {
                     cpu,
                     pc,
                     address,
                     size,
                     operation: if value.is_some() { "write" } else { "read" }.into(),
-                    value: value.unwrap_or_else(|| result.as_ref().copied().unwrap_or(0)),
-                    accepted: result.is_ok(),
+                    value: logged_value,
+                    accepted,
                     tick: host.now(),
                 });
             } else {
@@ -814,7 +833,7 @@ impl Bus {
         address: u64,
         size: u8,
         value: Option<u64>,
-    ) -> Result<u64, String> {
+    ) -> Result<AccessOutcome, String> {
         if !matches!(size, 1 | 2 | 4 | 8) {
             return Err("invalid MMIO access width".into());
         }
@@ -837,6 +856,7 @@ impl Bus {
                 })
         });
         let mut supported = false;
+        let mut bus_error = false;
         let mut reason = None;
         let mut continuation = None;
         let mut posted = Vec::new();
@@ -853,7 +873,7 @@ impl Bus {
                 );
                 drop(started);
                 self.wake_dependents(host, id)?;
-                return Ok(result & mask);
+                return Ok(AccessOutcome::Value(result & mask));
             }
             let publication = self.publication_before(id);
             let started = fujimod_perf::device(
@@ -871,8 +891,8 @@ impl Bus {
             let outcome = (|| {
                 let mut cx = Cx::new(host, cpu, pc, id);
                 device.advance(&mut cx);
-                let mut supported = false;
-                if Self::outcome(&mut cx)? {
+                let mut call = Self::outcome(&mut cx)?;
+                if call == CallOutcome::Supported {
                     phase = if value.is_some() { "write" } else { "read" };
                     let rejected = if self.mode == Mode::Discovery {
                         device.access_contract(address, size, value.map(|v| v & mask))
@@ -886,14 +906,14 @@ impl Bus {
                     } else {
                         result = device.read(&mut cx, address, size) & mask;
                     }
-                    supported = Self::outcome(&mut cx)?;
+                    call = Self::outcome(&mut cx)?;
                 }
-                if !supported {
+                if call == CallOutcome::Unmodeled {
                     reason = cx.refusal().map(String::from);
                 }
                 posted = cx.take_posted_writes();
                 drop(cx);
-                if !supported && self.mode == Mode::Discovery {
+                if call == CallOutcome::Unmodeled && self.mode == Mode::Discovery {
                     phase = "continuation";
                     let mut cx = Cx::new(host, cpu, pc, id);
                     continuation =
@@ -901,7 +921,7 @@ impl Bus {
                     if !cx.take_posted_writes().is_empty() {
                         cx.fail("a discovery continuation cannot issue bus-master MMIO writes");
                     }
-                    if !Self::outcome(&mut cx)? {
+                    if Self::outcome(&mut cx)? != CallOutcome::Supported {
                         reason = Some(format!(
                             "{}; continuation refused: {}",
                             reason.as_deref().unwrap_or("unsupported access"),
@@ -910,12 +930,14 @@ impl Bus {
                         continuation = None;
                     }
                 }
-                Ok(supported)
+                Ok(call)
             })();
             drop(started);
             self.publication_after(id, publication);
-            supported = match outcome {
-                Ok(supported) => supported,
+            match outcome {
+                Ok(CallOutcome::Supported) => supported = true,
+                Ok(CallOutcome::Unmodeled) => supported = false,
+                Ok(CallOutcome::BusError) => bus_error = true,
                 Err(message) => {
                     self.skip_refusal(
                         host.now(),
@@ -933,9 +955,15 @@ impl Bus {
                         },
                         message,
                     )?;
-                    return Ok(0);
+                    return Ok(AccessOutcome::Value(0));
                 }
-            };
+            }
+            if bus_error {
+                if cpu == usize::MAX {
+                    return Err(format!("bus error on non-CPU access at {address:#x}"));
+                }
+                return Ok(AccessOutcome::BusError);
+            }
             if supported || continuation.is_some() {
                 self.wake_dependents(host, id)?;
             }
@@ -986,7 +1014,7 @@ impl Bus {
                 ));
             }
         }
-        Ok(continuation.unwrap_or(result) & mask)
+        Ok(AccessOutcome::Value(continuation.unwrap_or(result) & mask))
     }
     pub fn event(
         &mut self,
@@ -1068,14 +1096,19 @@ impl Bus {
         posted: Vec<fujimod_emulator_devices::PostedWrite>,
     ) -> Result<(), String> {
         for write in posted {
-            self.access(
+            match self.access(
                 host,
                 usize::MAX,
                 pc,
                 write.address,
                 write.size,
                 Some(write.value),
-            )?;
+            )? {
+                AccessOutcome::Value(_) => {}
+                AccessOutcome::BusError => {
+                    return Err(format!("bus error on posted write at {:#x}", write.address));
+                }
+            }
         }
         Ok(())
     }
@@ -1120,8 +1153,9 @@ impl Bus {
         self.publication_after(device, publication);
         result?;
         match outcome {
-            Ok(true) => {}
-            Ok(false) => return Err("host request completion is unmodeled".into()),
+            Ok(CallOutcome::Supported) => {}
+            Ok(CallOutcome::Unmodeled) => return Err("host request completion is unmodeled".into()),
+            Ok(CallOutcome::BusError) => return Err("host request completion cannot bus error".into()),
             Err(error) => return Err(error),
         }
         self.wake_dependents(host, device)
@@ -1160,26 +1194,49 @@ impl Bus {
                     let outcome = Self::outcome(&mut cx);
                     drop(cx);
                     drop(started);
-                    if outcome != Ok(true) {
-                        self.skip_refusal(
-                            host.now(),
-                            Site {
-                                kind: "".into(),
-                                device: Some(id),
-                                phase: "dependency".into(),
-                                cpu: None,
-                                pc: 0,
-                                address: None,
-                                size: None,
-                                write: None,
-                                value: None,
-                                message: String::new(),
-                            },
-                            outcome
-                                .err()
-                                .unwrap_or_else(|| "dependent device effect is unmodeled".into()),
-                        )?;
-                        continue;
+                    match outcome {
+                        Ok(CallOutcome::Supported) => {}
+                        Ok(CallOutcome::Unmodeled) => {
+                            self.skip_refusal(
+                                host.now(),
+                                Site {
+                                    kind: "".into(),
+                                    device: Some(id),
+                                    phase: "dependency".into(),
+                                    cpu: None,
+                                    pc: 0,
+                                    address: None,
+                                    size: None,
+                                    write: None,
+                                    value: None,
+                                    message: String::new(),
+                                },
+                                "dependent device effect is unmodeled".into(),
+                            )?;
+                            continue;
+                        }
+                        Ok(CallOutcome::BusError) => {
+                            return Err("dependent device effect cannot bus error".into());
+                        }
+                        Err(error) => {
+                            self.skip_refusal(
+                                host.now(),
+                                Site {
+                                    kind: "".into(),
+                                    device: Some(id),
+                                    phase: "dependency".into(),
+                                    cpu: None,
+                                    pc: 0,
+                                    address: None,
+                                    size: None,
+                                    write: None,
+                                    value: None,
+                                    message: String::new(),
+                                },
+                                error,
+                            )?;
+                            continue;
+                        }
                     }
                     self.wake_queue.push(id);
                 }
@@ -1481,13 +1538,13 @@ mod tests {
             discovery
                 .access(&mut Services, 1, 0x88, 0x1000, 4, Some(19))
                 .unwrap(),
-            7
+            AccessOutcome::Value(7)
         );
         assert_eq!(
             discovery
                 .access(&mut Services, 1, 0x8c, 0x1000, 4, None)
                 .unwrap(),
-            7
+            AccessOutcome::Value(7)
         );
         let state = discovery.state();
         assert_eq!(
@@ -1565,7 +1622,7 @@ mod tests {
         ] {
             assert_eq!(
                 bus.access(&mut host, 0, 0, address, size, None).unwrap(),
-                expected
+                AccessOutcome::Value(expected)
             );
         }
         for address in [0x1ff8, 0x2008, 0x1_0000_2000, u64::MAX - 3] {
@@ -1709,7 +1766,7 @@ mod tests {
         for address in [0x1000, 0x1010, 0x9000] {
             assert_eq!(
                 bus.access(&mut Services, 0, 0, address, 4, None).unwrap(),
-                22
+                AccessOutcome::Value(22)
             );
         }
         assert!(bus.access(&mut Services, 0, 0, 0x1000, 8, None).is_err());
@@ -1830,7 +1887,7 @@ mod discovery_tests {
             }
             assert_eq!(
                 bus.access(&mut Services, 0, 0x44, 0x1000, 4, None).unwrap(),
-                0
+                AccessOutcome::Value(0)
             );
             bus.access(&mut Services, 1, 0x48, 0x1000, 4, Some(0xaabbccdd))
                 .unwrap();
@@ -1838,11 +1895,11 @@ mod discovery_tests {
                 .unwrap();
             assert_eq!(
                 bus.access(&mut Services, 0, 0x50, 0x1000, 4, None).unwrap(),
-                0xaabb77dd
+                AccessOutcome::Value(0xaabb77dd)
             );
             assert_eq!(
                 bus.access(&mut Services, 0, 0x54, 0x1002, 2, None).unwrap(),
-                0xaabb
+                AccessOutcome::Value(0xaabb)
             );
             let state = bus.state();
             assert_eq!(state, bus.state());
@@ -1866,6 +1923,41 @@ mod discovery_tests {
                 bus.access(&mut Services, 0, 0, u64::MAX, 2, Some(0))
                     .is_err()
             );
+        }
+    }
+
+    #[test]
+    fn bus_error_region_returns_bus_error_without_discovery_shadow_and_fails_posted_writes() {
+        for mode in [Mode::Strict, Mode::Discovery] {
+            let mut bus = Bus::new(mode);
+            bus.register(0x1000, 4, Box::new(Master)).unwrap();
+            bus.register(
+                0x2000,
+                4,
+                Box::new(fujimod_emulator_devices::bus_error::BusError),
+            )
+            .unwrap();
+            bus.observe_transactions(Some(8));
+            assert_eq!(
+                bus.access(&mut Services, 0, 0x40, 0x2000, 4, None).unwrap(),
+                AccessOutcome::BusError
+            );
+            assert_eq!(
+                bus.access(&mut Services, 0, 0x44, 0x2000, 4, Some(0xdead_beef))
+                    .unwrap(),
+                AccessOutcome::BusError
+            );
+            let state = bus.state();
+            assert!(state["unmodeled"].as_array().unwrap().is_empty());
+            assert!(state["discovery_shadow"].as_array().unwrap().is_empty());
+            let (rows, _) = bus.transactions();
+            assert_eq!(rows.len(), 2);
+            assert!(!rows[0].accepted);
+            assert!(!rows[1].accepted);
+            let error = bus
+                .access(&mut Services, 0, 0x48, 0x1000, 4, Some(5))
+                .unwrap_err();
+            assert!(error.contains("bus error on non-CPU access"), "{error}");
         }
     }
 }
