@@ -69,6 +69,29 @@ pub const PRELUDE_STACK_MAX: usize = {};
     rust += &format!(
         "pub(super) const REQUEST_ABI: super::RequestAbi = super::RequestAbi::{variant};\n"
     );
+    const BOARD_HEADER_BYTES: usize = 16;
+    const BOARD_FULL_BYTES: usize = BOARD_HEADER_BYTES + 48 * 24;
+    let board = symbols["setup_sd_board"].as_u64().unwrap() as usize;
+    let board_end = symbols
+        .values()
+        .map(|offset| offset.as_u64().unwrap() as usize)
+        .filter(|&offset| offset > board)
+        .min()
+        .unwrap_or(image_bytes as usize);
+    let board_span = board_end - board;
+    let has_board_init = symbols.contains_key("setup_sd_board_initialize");
+    let board_layout = if board_span >= BOARD_FULL_BYTES {
+        "WithOperations"
+    } else if !has_board_init && board_span == BOARD_HEADER_BYTES {
+        "HostOnly"
+    } else {
+        panic!(
+            "Unsupported XP5 SD board table span {board_span} (has_board_init={has_board_init}) in {stem}"
+        );
+    };
+    rust += &format!(
+        "pub(super) const BOARD_LAYOUT: super::BoardLayout = super::BoardLayout::{board_layout};\n"
+    );
     for symbol in extra_symbols {
         assert!(
             symbols.contains_key(*symbol),

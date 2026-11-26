@@ -47,6 +47,7 @@ struct Loader {
     request_abi: RequestAbi,
     sd_progress: usize,
     sd_board: usize,
+    board_layout: BoardLayout,
     diagnostics: Option<DiagnosticTables>,
     sd_secondary_release: usize,
     boot_ready: usize,
@@ -82,6 +83,7 @@ const CARD: Loader = Loader {
     request_abi: template::REQUEST_ABI,
     sd_progress: template::SETUP_SD_PROGRESS,
     sd_board: template::SETUP_SD_BOARD,
+    board_layout: template::BOARD_LAYOUT,
     diagnostics: Some(DiagnosticTables {
         host_prelude: template::SETUP_SD_HOST_PRELUDE,
         host_variants: template::SETUP_SD_HOST_VARIANTS,
@@ -106,6 +108,7 @@ const XE5: Loader = Loader {
     request_abi: xe5_template::REQUEST_ABI,
     sd_progress: xe5_template::SETUP_SD_PROGRESS,
     sd_board: xe5_template::SETUP_SD_BOARD,
+    board_layout: xe5_template::BOARD_LAYOUT,
     diagnostics: None,
     sd_secondary_release: xe5_template::SETUP_SD_SECONDARY_RELEASE,
     boot_ready: xe5_template::A64_BOOT_READY,
@@ -126,6 +129,7 @@ const INTERNAL_FLASH: Loader = Loader {
     request_abi: flash_template::REQUEST_ABI,
     sd_progress: flash_template::SETUP_SD_PROGRESS,
     sd_board: flash_template::SETUP_SD_BOARD,
+    board_layout: flash_template::BOARD_LAYOUT,
     diagnostics: Some(DiagnosticTables {
         host_prelude: flash_template::SETUP_SD_HOST_PRELUDE,
         host_variants: flash_template::SETUP_SD_HOST_VARIANTS,
@@ -332,6 +336,62 @@ pub struct Setup {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stock_selector: Option<StockSelector>,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BoardLayout {
+    HostOnly,
+    WithOperations,
+}
+
+const BOARD_HEADER_BYTES: usize = 16;
+const BOARD_OPERATIONS: usize = 48;
+const BOARD_OPERATION_BYTES: usize = 24;
+const BOARD_FULL_BYTES: usize = BOARD_HEADER_BYTES + BOARD_OPERATIONS * BOARD_OPERATION_BYTES;
+
+impl BoardLayout {
+    const fn bytes(self) -> usize {
+        match self {
+            Self::HostOnly => BOARD_HEADER_BYTES,
+            Self::WithOperations => BOARD_FULL_BYTES,
+        }
+    }
+
+    fn bind(self, program: &mut [u8], at: usize, board: &Board) -> Result<()> {
+        require(
+            board.timeout_setting <= 14 && mmio(board.host),
+            "Invalid XP5 SD binding",
+        )?;
+        if self == Self::WithOperations {
+            require(
+                board.operations.len() <= BOARD_OPERATIONS,
+                "Invalid XP5 SD binding",
+            )?;
+            for op in &board.operations {
+                require(board_operation(op), "Invalid XP5 SD operation")?;
+            }
+        }
+        require(
+            extent(program, at, self.bytes())?.iter().all(|v| *v == 0),
+            "XP5 board template changed",
+        )?;
+        put64(program, at, board.host)?;
+        put(program, at + 8, u32::from(board.timeout_setting))?;
+        match self {
+            Self::HostOnly => put(program, at + 12, 0),
+            Self::WithOperations => {
+                put(program, at + 12, board.operations.len() as u32)?;
+                for (n, op) in board.operations.iter().enumerate() {
+                    let slot = at + BOARD_HEADER_BYTES + n * BOARD_OPERATION_BYTES;
+                    put64(program, slot, op.address)?;
+                    put(program, slot + 8, op.mask)?;
+                    put(program, slot + 12, op.value)?;
+                    put(program, slot + 16, op.kind)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequestAbi {
     Sequential = 1,
@@ -1235,27 +1295,9 @@ fn package_inner(
             extent(&prefix, literal, 8)? == setup.continuation.to_le_bytes(),
             "XP5 continuation literal differs",
         )?;
-        let board = &setup.board;
-        let cfg = loader.sd_board;
-        require(
-            board.operations.len() <= 48 && board.timeout_setting <= 14 && mmio(board.host),
-            "Invalid XP5 SD binding",
-        )?;
-        require(
-            extent(&program, cfg, 16 + 48 * 24)?.iter().all(|v| *v == 0),
-            "XP5 board template changed",
-        )?;
-        put64(&mut program, cfg, board.host)?;
-        put(&mut program, cfg + 8, u32::from(board.timeout_setting))?;
-        put(&mut program, cfg + 12, board.operations.len() as u32)?;
-        for (n, op) in board.operations.iter().enumerate() {
-            require(board_operation(op), "Invalid XP5 SD operation")?;
-            let at = cfg + 16 + n * 24;
-            put64(&mut program, at, op.address)?;
-            put(&mut program, at + 8, op.mask)?;
-            put(&mut program, at + 12, op.value)?;
-            put(&mut program, at + 16, op.kind)?;
-        }
+        loader
+            .board_layout
+            .bind(&mut program, loader.sd_board, &setup.board)?;
         if let Some(divider) = stock_selector.and_then(|stock| stock.transfer_clock_divider) {
             bind_transfer_clock(&mut program, divider)?;
         }
@@ -1427,6 +1469,113 @@ mod tests {
             clock_on_ms: 0,
         });
         assert!(package(&data, &setup, Some(ram), 0, StartupStop::Continue, false).is_err());
+    }
+
+    #[test]
+    fn host_only_board_layout_binds_only_sixteen_bytes() {
+        let board = Board {
+            host: 0xff905000,
+            timeout_setting: 14,
+            operations: vec![Operation {
+                address: 0xff906000,
+                mask: 0,
+                value: 1,
+                kind: 0,
+            }],
+        };
+        let mut program = [0u8; 32];
+        program[16..].fill(0xab);
+        BoardLayout::HostOnly.bind(&mut program, 0, &board).unwrap();
+        assert_eq!(
+            u64::from_le_bytes(program[..8].try_into().unwrap()),
+            0xff905000
+        );
+        assert_eq!(word(&program, 8).unwrap(), 14);
+        assert_eq!(word(&program, 12).unwrap(), 0);
+        assert_eq!(&program[16..], &[0xab; 16]);
+
+        // Non-zero bytes inside the 16-byte template or invalid host/timeout refuse.
+        let mut dirty = [0u8; 24];
+        dirty[15] = 1;
+        assert!(BoardLayout::HostOnly.bind(&mut dirty, 0, &board).is_err());
+        let mut bad_host = board.clone();
+        bad_host.host = 0x1000;
+        assert!(
+            BoardLayout::HostOnly
+                .bind(&mut [0u8; 16], 0, &bad_host)
+                .is_err()
+        );
+        let mut bad_timeout = board.clone();
+        bad_timeout.timeout_setting = 15;
+        assert!(
+            BoardLayout::HostOnly
+                .bind(&mut [0u8; 16], 0, &bad_timeout)
+                .is_err()
+        );
+
+        // Full board layout binds operations and checks all 1,168 bytes.
+        let mut full = vec![0u8; BOARD_FULL_BYTES + 8];
+        full[BOARD_FULL_BYTES..].fill(0xcd);
+        BoardLayout::WithOperations
+            .bind(&mut full, 0, &board)
+            .unwrap();
+        assert_eq!(word(&full, 12).unwrap(), 1);
+        assert_eq!(
+            u64::from_le_bytes(full[16..24].try_into().unwrap()),
+            0xff906000
+        );
+        assert_eq!(word(&full, 28).unwrap(), 1);
+        assert_eq!(&full[BOARD_FULL_BYTES..], &[0xcd; 8]);
+
+        let mut dirty_full = vec![0u8; BOARD_FULL_BYTES];
+        dirty_full[BOARD_FULL_BYTES - 1] = 1;
+        assert!(
+            BoardLayout::WithOperations
+                .bind(&mut dirty_full, 0, &board)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn xe5_loader_binds_board_and_secondary_release_within_declared_ranges() {
+        assert_eq!(CARD.board_layout, BoardLayout::WithOperations);
+        assert_eq!(INTERNAL_FLASH.board_layout, BoardLayout::WithOperations);
+
+        let (data, mut setup, ram) = fixture();
+        setup.card_loader = CardLoader::Xe5;
+        setup.extension_alignment = ExtensionAlignment::Page4KiB;
+        setup.secondary_release = vec![1, 2, 3];
+        let files = package(&data, &setup, Some(ram), 0, StartupStop::Continue, false).unwrap();
+        let stage = &files[0].bytes;
+        let board_at = 0x9000 + XE5.sd_board;
+        assert_eq!(
+            u64::from_le_bytes(stage[board_at..board_at + 8].try_into().unwrap()),
+            setup.board.host
+        );
+        assert_eq!(
+            word(stage, board_at + 8).unwrap(),
+            u32::from(setup.board.timeout_setting)
+        );
+        let expected_count = match XE5.board_layout {
+            BoardLayout::HostOnly => 0,
+            BoardLayout::WithOperations => setup.board.operations.len() as u32,
+        };
+        assert_eq!(word(stage, board_at + 12).unwrap(), expected_count);
+        let release_at = 0x9000 + XE5.sd_secondary_release;
+        assert_eq!(word(stage, release_at).unwrap(), 0xe);
+        assert_eq!(word(stage, release_at + 4).unwrap(), 0);
+
+        let bound = shared_bound_ranges(&XE5);
+        let loader = &stage[0x9000..0x9000 + XE5.image.len()];
+        for at in (0..loader.len()).step_by(4) {
+            if !bound.iter().any(|range| range.contains(&at)) {
+                assert_eq!(
+                    word(loader, at).unwrap(),
+                    word(XE5.image, at).unwrap(),
+                    "{at:#x}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -2189,7 +2338,7 @@ mod tests {
     fn shared_bound_ranges(loader: &Loader) -> Vec<std::ops::Range<usize>> {
         let mut ranges = vec![
             loader.setup_configuration..loader.setup_configuration + 216,
-            loader.sd_board..loader.sd_board + 16 + 48 * 24,
+            loader.sd_board..loader.sd_board + loader.board_layout.bytes(),
             loader.sd_secondary_release..loader.sd_secondary_release + 8,
             loader.sd_request..loader.sd_request + loader.request_abi.bytes(),
             loader.setup_return_branch..loader.setup_return_branch + 4,
