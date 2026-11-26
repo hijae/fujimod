@@ -863,7 +863,10 @@ impl Board {
                             data,
                             read: false,
                             write: true,
-                            range: HookRange::All,
+                            range: HookRange::Inclusive {
+                                begin: 0,
+                                end: u64::from(u32::MAX),
+                            },
                         })?
                     };
                     board.hooks.push((core, hook));
