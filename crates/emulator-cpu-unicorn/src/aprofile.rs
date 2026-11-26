@@ -184,7 +184,10 @@ impl Core {
                 data,
             })?;
             let hook = e.cpu.install_hook(Hook::Memory {
-                range: HookRange::All,
+                range: HookRange::Inclusive {
+                    begin: 0,
+                    end: u64::from(u32::MAX),
+                },
                 read: false,
                 write: true,
                 callback: written,
@@ -644,12 +647,23 @@ impl CodeOwner for Execution {
         }
         if address.checked_add(bytes).is_none_or(|end| end > 1 << 32) {
             // The optimized native watch bitmap covers 32-bit physical pages.
-            // Keep full-width code coherent by observing every write once a
-            // high page is translated; do not truncate or omit that dependency.
-            self.cpu.hook_watched(
-                self.write_hook.get().ok_or("missing code-write hook")?,
-                false,
-            )?;
+            // Replace the 32-bit watched hook with an unwatched full-width
+            // store hook so high-address code stays coherent without driving
+            // `embedder_watched` past the 32-bit bitmap on >= 4 GiB pages.
+            let wide = unsafe {
+                self.cpu.install_hook(Hook::Memory {
+                    range: HookRange::All,
+                    read: false,
+                    write: true,
+                    callback: written,
+                    data: (self as *const Execution).cast_mut().cast(),
+                })
+            }?;
+            let old = self
+                .write_hook
+                .replace(Some(wide))
+                .ok_or("missing code-write hook")?;
+            self.cpu.remove_hook(old)?;
             self.wide_code_watch.set(true);
             if std::env::var_os("FUJIMOD_EXECUTION_COUNTERS").is_some() {
                 eprintln!(

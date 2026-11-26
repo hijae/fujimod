@@ -561,3 +561,75 @@ fn code_rewritten_again_while_a_peer_has_not_flushed_runs_the_new_code() {
         assert_eq!(value(&cpu, arm::CORE[0]), u64::from(n));
     }
 }
+
+unsafe fn high_mmio_noop_read(_: u64, _: u32, _: *mut c_void) -> u64 {
+    0
+}
+unsafe fn high_mmio_noop_write(_: u64, _: u32, _: u64, _: *mut c_void) {}
+
+#[test]
+fn unmapping_high_mmio_after_low_code_does_not_read_past_watch_bitmap() {
+    const CHILD: &str = "FUJIMOD_APROFILE_HIGH_MMIO_UNMAP_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let cpu = cpu();
+        code(&cpu, &[0xd503_201f]); // nop
+        assert!(matches!(run(&cpu, 0x1000, 1), Exit::Stopped));
+        let mmio = Mmio {
+            read: high_mmio_noop_read,
+            write: high_mmio_noop_write,
+            data: std::ptr::null_mut(),
+        };
+        for address in [0x1_c000_0000u64, 0x80_0000_0000u64] {
+            unsafe { cpu.map_mmio(address, 0x1000, mmio.clone()) }.unwrap();
+            cpu.unmap(address, 0x1000).unwrap();
+        }
+        return;
+    }
+    let test = format!(
+        "{}::unmapping_high_mmio_after_low_code_does_not_read_past_watch_bitmap",
+        module_path!().trim_start_matches("fujimod_emulator_cpu_unicorn::")
+    );
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([test.as_str(), "--exact", "--nocapture", "--test-threads=1"])
+        .env(CHILD, "1")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() && stdout.contains("1 passed"),
+        "child {:?}\n{stdout}\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn low_code_followed_by_high_code_keeps_coherence_and_unmaps_high_mmio() {
+    let cpu = cpu();
+    code(&cpu, &[0xd503_201f]); // nop
+    assert!(matches!(run(&cpu, 0x1000, 1), Exit::Stopped));
+
+    let high = 0x1_0000_0000u64;
+    cpu.map_zeroed(high, 0x4000, 7).unwrap();
+    cpu.write_memory(high, &0xd2800020u32.to_le_bytes()).unwrap(); // mov x0, #1
+    assert!(matches!(run(&cpu, high, 1), Exit::Stopped));
+    assert_eq!(value(&cpu, Register::X(0)), 1);
+
+    // Overwrite the high page via a guest store from low code.
+    code(&cpu, &[0xb9000022]); // str w2, [x1]
+    cpu.write_register(Register::X(1), &high.to_le_bytes())
+        .unwrap();
+    cpu.write_register(Register::X(2), &0xd2800040u64.to_le_bytes())
+        .unwrap(); // mov x0, #2
+    assert!(matches!(run(&cpu, 0x1000, 1), Exit::Stopped));
+    assert!(matches!(run(&cpu, high, 1), Exit::Stopped));
+    assert_eq!(value(&cpu, Register::X(0)), 2);
+
+    let mmio = Mmio {
+        read: high_mmio_noop_read,
+        write: high_mmio_noop_write,
+        data: std::ptr::null_mut(),
+    };
+    unsafe { cpu.map_mmio(0x1_c000_0000, 0x1000, mmio) }.unwrap();
+    cpu.unmap(0x1_c000_0000, 0x1000).unwrap();
+}

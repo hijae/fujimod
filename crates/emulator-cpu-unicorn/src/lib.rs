@@ -399,6 +399,7 @@ impl Drop for Core {
 }
 struct StoredHook {
     native: usize,
+    range: HookRange,
     _context: Option<Box<HookData>>,
 }
 struct HookData {
@@ -478,6 +479,13 @@ fn range(range: HookRange) -> (u64, u64) {
         HookRange::All => (1, 0),
         HookRange::Inclusive { begin, end } => (begin, end),
     }
+}
+/// Unicorn's native `embedder_watch` bitmap covers 1 KiB physical pages within 32 bits (`0..=0xffffffff`).
+fn fits_watch_bitmap(range: HookRange) -> bool {
+    matches!(
+        range,
+        HookRange::Inclusive { begin, end } if begin <= end && end <= u64::from(u32::MAX)
+    )
 }
 impl Core {
     /// Route stores and hooked accesses to the engine's slow path only on
@@ -1363,6 +1371,7 @@ impl Cpu for Core {
             key,
             StoredHook {
                 native,
+                range: span,
                 _context: Some(data),
             },
         );
@@ -1398,6 +1407,7 @@ impl Cpu for Core {
             key,
             StoredHook {
                 native,
+                range: span,
                 _context: None,
             },
         );
@@ -1509,7 +1519,19 @@ impl Cpu for Core {
     }
     fn hook_watched(&self, hook: HookId, watched: bool) -> Result<(), String> {
         self.check_tlbi_mutation()?;
-        let key = self.hook_key(hook)?;
+        let (key, range) = {
+            if hook.owner != self.identity {
+                return Err("hook belongs to a different CPU".into());
+            }
+            let hooks = self.hooks.borrow();
+            let stored = hooks.get(&hook.key).ok_or("hook has already been removed")?;
+            (stored.native, stored.range)
+        };
+        if watched && !fits_watch_bitmap(range) {
+            return Err(
+                "watched hooks require a 32-bit physical address range (0..=0xffffffff)".into(),
+            );
+        }
         let set = self
             .api
             .extensions
@@ -2749,5 +2771,52 @@ mod tests {
                 (Access::Write, 0x801024, 4, 0x12345678)
             ]
         );
+    }
+
+    #[test]
+    fn watched_hooks_reject_ranges_outside_32_bit_bitmap() {
+        let library = library();
+        let cpu = library.open(Model::ArmV8A, 4 * 1024 * 1024).unwrap();
+        let all = unsafe {
+            cpu.install_hook(Hook::Memory {
+                callback: memory_restart_boundary_noop,
+                data: std::ptr::null_mut(),
+                read: false,
+                write: true,
+                range: HookRange::All,
+            })
+        }
+        .unwrap();
+        assert!(cpu.hook_watched(all, true).is_err());
+
+        let high = unsafe {
+            cpu.install_hook(Hook::Memory {
+                callback: memory_restart_boundary_noop,
+                data: std::ptr::null_mut(),
+                read: false,
+                write: true,
+                range: HookRange::Inclusive {
+                    begin: 0,
+                    end: 0x1_0000_0000,
+                },
+            })
+        }
+        .unwrap();
+        assert!(cpu.hook_watched(high, true).is_err());
+
+        let low = unsafe {
+            cpu.install_hook(Hook::Memory {
+                callback: memory_restart_boundary_noop,
+                data: std::ptr::null_mut(),
+                read: false,
+                write: true,
+                range: HookRange::Inclusive {
+                    begin: 0,
+                    end: u64::from(u32::MAX),
+                },
+            })
+        }
+        .unwrap();
+        assert!(cpu.hook_watched(low, true).is_ok());
     }
 }
